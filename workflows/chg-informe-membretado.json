@@ -1,0 +1,200 @@
+﻿{
+  "name": "CHG - Informe Membretado",
+  "nodes": [
+    {
+      "id": "node-01-trigger",
+      "name": "Vigilar Carpeta Entrada Drive",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": { "googleDriveOAuth2Api": { "id": "", "name": "Google Drive - CHG Ascensores" } },
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "CARPETA_ENTRADA_ID",
+          "mode": "id"
+        },
+        "event": "fileCreated",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-02-download",
+      "name": "Descargar PDF desde Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [460, 300],
+      "credentials": { "googleDriveOAuth2Api": { "id": "", "name": "Google Drive - CHG Ascensores" } },
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-03-parse",
+      "name": "Parsear PDF MaintainX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import sys, base64\n\n# Ajustar esta ruta segun el servidor n8n\nsys.path.insert(0, '/opt/n8n-resources/chg-informe-membretado/src')\nfrom maintainx_parser import parse_pdf\n\ntry:\n    item = _input.first()\n    binary_keys = list(item.binary.keys()) if item.binary else []\n    if not binary_keys:\n        raise ValueError('No se recibio archivo binario. Enviar PDF como multipart/form-data.')\n    pdf_bytes = base64.b64decode(item.binary[binary_keys[0]]['data'])\n    parsed = parse_pdf(pdf_bytes)\n    return [{\n        'json': {\n            'data':          parsed,\n            'validacion_ok': parsed['validacion']['ok'],\n            'numero_orden':  parsed['meta'].get('numero_orden', ''),\n            'error':         None,\n        }\n    }]\nexcept Exception as e:\n    import traceback\n    return [{'json': {'data': None, 'validacion_ok': False, 'numero_orden': '', 'error': str(e), 'traceback': traceback.format_exc()}}]"
+      }
+    },
+    {
+      "id": "node-04-validar",
+      "name": "Validar Parseo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-ok",
+              "leftValue": "={{ $json.validacion_ok }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node-05-render",
+      "name": "Renderizar HTML Membretado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 180],
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import sys, base64, os\n\n# Ajustar esta ruta segun el servidor n8n\nsys.path.insert(0, '/opt/n8n-resources/chg-informe-membretado/src')\nfrom render_html import render_html\n\nitem         = _input.first()\ndata         = item.json['data']\nnumero_orden = item.json.get('numero_orden', '')\n\nhtml_b64 = render_html(\n    data=data,\n    template_path=os.environ.get('CHG_TEMPLATE_PATH', '/opt/n8n-resources/chg-informe-membretado/template/informe.html'),\n    membrete_path=os.environ.get('CHG_MEMBRETE_PATH', '/opt/n8n-resources/chg-informe-membretado/template/assets/membrete.png')\n)\n\nreturn [{'json': {'numero_orden': numero_orden}, 'binary': {'html': {'data': html_b64, 'mimeType': 'text/html', 'fileName': 'index.html'}}}]"
+      }
+    },
+    {
+      "id": "node-06-gotenberg",
+      "name": "Generar PDF con Gotenberg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 180],
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "html"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "node-07-upload",
+      "name": "Subir PDF Membretado a Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1560, 180],
+      "credentials": { "googleDriveOAuth2Api": { "id": "", "name": "Google Drive - CHG Ascensores" } },
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ 'informe-membretado-' + $('Parsear PDF MaintainX').first().json.numero_orden + '.pdf' }}",
+        "folderId": {
+          "__rl": true,
+          "value": "CARPETA_SALIDA_ID",
+          "mode": "id"
+        },
+        "inputDataFieldName": "pdf",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-08-error-set",
+      "name": "Preparar Datos de Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 420],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "e1", "name": "file_id",      "value": "={{ $('Vigilar Carpeta Entrada Drive').first().json.id }}",   "type": "string" },
+            { "id": "e2", "name": "file_name",    "value": "={{ $('Vigilar Carpeta Entrada Drive').first().json.name }}", "type": "string" },
+            { "id": "e3", "name": "numero_orden", "value": "={{ $json.numero_orden }}",                                   "type": "string" },
+            { "id": "e4", "name": "error_msg",    "value": "={{ $json.error || 'Validacion fallida: ' + JSON.stringify($json.data?.validacion) }}", "type": "string" },
+            { "id": "e5", "name": "detalle",      "value": "={{ $json.traceback || JSON.stringify($json.data?.validacion) }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-09-error-move",
+      "name": "Mover PDF a Carpeta Errores Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1340, 420],
+      "credentials": { "googleDriveOAuth2Api": { "id": "", "name": "Google Drive - CHG Ascensores" } },
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.file_id }}",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "CARPETA_ERRORES_ID",
+          "mode": "id"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Vigilar Carpeta Entrada Drive": { "main": [[{ "node": "Descargar PDF desde Drive",      "type": "main", "index": 0 }]] },
+    "Descargar PDF desde Drive":     { "main": [[{ "node": "Parsear PDF MaintainX",           "type": "main", "index": 0 }]] },
+    "Parsear PDF MaintainX":         { "main": [[{ "node": "Validar Parseo",                  "type": "main", "index": 0 }]] },
+    "Validar Parseo": {
+      "main": [
+        [{ "node": "Renderizar HTML Membretado",      "type": "main", "index": 0 }],
+        [{ "node": "Preparar Datos de Error",         "type": "main", "index": 0 }]
+      ]
+    },
+    "Renderizar HTML Membretado":    { "main": [[{ "node": "Generar PDF con Gotenberg",       "type": "main", "index": 0 }]] },
+    "Generar PDF con Gotenberg":     { "main": [[{ "node": "Subir PDF Membretado a Drive",    "type": "main", "index": 0 }]] },
+    "Preparar Datos de Error":       { "main": [[{ "node": "Mover PDF a Carpeta Errores Drive", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "versionId": "a1b2c3d4-ffff-0000-0000-000000000001"
+}
