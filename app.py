@@ -317,48 +317,11 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
     
     hdr = seccion.header
+    ph = hdr.paragraphs[0]
+    ph.alignment = WD_ALIGN_PARAGRAPH.LEFT
     if LOGO.exists():
-        rel = hdr.part.relate_to(str(LOGO), RELATIONSHIP_TYPE.IMAGE, is_external=False)
-        # Inyección VML: Fija la imagen en coordenada 0,0, al 100% del tamaño A4 (595.3 x 841.9 pt) y detrás del texto (z-index negativo)
-        watermark_xml = f"""
-        <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-             xmlns:v="urn:schemas-microsoft-com:vml"
-             xmlns:o="urn:schemas-microsoft-com:office:office"
-             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-            <w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>
-            <w:r>
-                <w:rPr><w:noProof/></w:rPr>
-                <w:pict>
-                    <v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f">
-                        <v:stroke joinstyle="miter"/>
-                        <v:formulas>
-                            <v:f eqn="if lineDrawn pixelLineWidth 0"/>
-                            <v:f eqn="sum @0 1 0"/>
-                            <v:f eqn="sum 0 0 @1"/>
-                            <v:f eqn="prod @2 1 2"/>
-                            <v:f eqn="prod @3 21600 pixelWidth"/>
-                            <v:f eqn="prod @3 21600 pixelHeight"/>
-                            <v:f eqn="sum @0 0 1"/>
-                            <v:f eqn="prod @6 1 2"/>
-                            <v:f eqn="prod @7 21600 pixelWidth"/>
-                            <v:f eqn="sum @8 21600 0"/>
-                            <v:f eqn="prod @7 21600 pixelHeight"/>
-                            <v:f eqn="sum @10 21600 0"/>
-                        </v:formulas>
-                        <v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/>
-                        <o:lock v:ext="edit" aspectratio="t"/>
-                    </v:shapetype>
-                    <v:shape id="WaterMark" type="#_x0000_t75" 
-                             style="position:absolute;left:0;top:0;width:595.3pt;height:841.9pt;z-index:-251658240;
-                                    mso-position-horizontal:center;mso-position-vertical:center;
-                                    mso-position-horizontal-relative:page;mso-position-vertical-relative:page">
-                        <v:imagedata r:id="{rel.rId}"/>
-                    </v:shape>
-                </w:pict>
-            </w:r>
-        </w:p>
-        """
-        hdr._element.append(parse_xml(watermark_xml))
+        ph.add_run().add_picture(str(LOGO), width=Cm(4))
+
 
     # 3. PIE DE PÁGINA PERSONALIZADO
     ftr = seccion.footer
