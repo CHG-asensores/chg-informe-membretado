@@ -93,8 +93,15 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+import io, base64, re, zipfile, shutil, os, tempfile
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
-    """Inserta imagen como fondo de página completa manipulando el ZIP (sin lxml)."""
     if not os.path.exists(ruta_imagen_png):
         return docx_bytes
 
@@ -107,7 +114,7 @@ def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
         with zipfile.ZipFile(tmp_docx_path, 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
             
-        # 1. Copiar imagen a word/media/
+        # 1. Copiar imagen a word/media/bg.png
         media_dir = os.path.join(extract_dir, 'word', 'media')
         os.makedirs(media_dir, exist_ok=True)
         shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg.png'))
@@ -177,14 +184,6 @@ def set_cell_border(cell, **kwargs):
             for key, val in edge_data.items():
                 element.set(qn('w:{}'.format(key)), str(val))
 
-def set_cell_bg_color(cell, color):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = OxmlElement('w:shd')
-    shd.set(qn('w:val'), 'clear')
-    shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'), color)
-    tcPr.append(shd)
-
 def limpiar_texto(texto):
     if not texto: return "-"
     limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
@@ -208,7 +207,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     style = doc.styles['Normal']
     style.font.name = 'Arial'
-    style.font.size = Pt(9.5)
+    style.font.size = Pt(11) # Base aumentada
 
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
 
@@ -218,30 +217,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     obs = data.get("observaciones", {})
     firma = data.get("firma", {})
 
-    # RECUADRO SUPERIOR (Ajustado a tamaño compacto)
-    tbl_top = doc.add_table(rows=1, cols=2)
-    tbl_top.autofit = False
-    tbl_top.columns[0].width = Cm(1.2) # Cuadro pequeño
-    tbl_top.columns[1].width = Cm(6.0) # Límite para el texto
-    
-    cell_box = tbl_top.cell(0, 0)
-    set_cell_bg_color(cell_box, "111827")
-    p_box = cell_box.paragraphs[0]
-    p_box.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_box = p_box.add_run("CHG") # Texto simulando el mini logo
-    r_box.font.color.rgb = RGBColor(255, 255, 255)
-    r_box.font.bold = True
-    r_box.font.size = Pt(7)
-    
-    cell_text = tbl_top.cell(0, 1)
-    p_text = cell_text.paragraphs[0]
-    r_text = p_text.add_run("  CHG Ascensores")
-    r_text.font.bold = True
-    r_text.font.size = Pt(10)
-
-    doc.add_paragraph()
-
-    # METADATOS EN COLUMNAS
+    # METADATOS EN COLUMNAS (Aumentado de tamaño)
     tbl_meta = doc.add_table(rows=4, cols=2)
     tbl_meta.autofit = False
     tbl_meta.columns[0].width = Cm(9.0)
@@ -252,7 +228,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         p.paragraph_format.space_after = Pt(8)
         
         r_label = p.add_run(f"{icon} {label.upper()}\n")
-        r_label.font.size = Pt(7.5)
+        r_label.font.size = Pt(9)
         r_label.font.color.rgb = GRIS_ETIQUETA
         
         val_clean = limpiar_texto(value)
@@ -261,19 +237,17 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             r_val = p.add_run(f"✓ {val_clean}")
             r_val.font.color.rgb = VERDE_OK
             r_val.font.bold = True
-            r_val.font.size = Pt(10)
+            r_val.font.size = Pt(12)
         elif is_category:
             p.text = "" 
             p.add_run(f"{icon} {label.upper()}").font.color.rgb = GRIS_ETIQUETA
-            p.runs[0].font.size = Pt(7.5)
+            p.runs[0].font.size = Pt(9)
             
-            # Tabla anidada para controlar el ancho de la caja azul
             t_cat = cell.add_table(rows=1, cols=1)
             t_cat.autofit = False
             c_cat = t_cat.cell(0, 0)
-            c_cat.width = Cm(4.5) # Límite del cuadro azul
+            c_cat.width = Cm(5.5) 
             
-            # Borde azul más grueso (sz: 12)
             set_cell_border(c_cat, 
                             top={"val": "single", "sz": "12", "color": "2563EB"},
                             bottom={"val": "single", "sz": "12", "color": "2563EB"},
@@ -283,12 +257,12 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             p_cat = c_cat.paragraphs[0]
             r_cat = p_cat.add_run(val_clean)
             r_cat.font.color.rgb = AZUL_LINK
-            r_cat.font.size = Pt(9.5)
+            r_cat.font.size = Pt(11)
         else:
             r_val = p.add_run(val_clean)
             r_val.font.bold = True
             r_val.font.color.rgb = NEGRO_VALOR
-            r_val.font.size = Pt(10)
+            r_val.font.size = Pt(12)
 
     fill_cell(tbl_meta.cell(0, 0), "🔒", "ESTADO", meta.get("estado", "-"), is_status=True)
     fill_cell(tbl_meta.cell(0, 1), "🕒", "FECHA DE VENCIMIENTO", meta.get("fecha_vencimiento", "-"))
@@ -300,14 +274,20 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     fill_cell(tbl_meta.cell(3, 1), "🏢", "ACTIVO", meta.get("activo", "-"))
 
     doc.add_paragraph()
-    p_proc = doc.add_paragraph()
-    p_proc.paragraph_format.space_before = Pt(12)
-    p_proc.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_p_etiq = p_proc.add_run("≡ PROCEDIMIENTO\n")
-    r_p_etiq.font.size = Pt(7)
+    
+    # PROCEDIMIENTO (Alineado a la izquierda, título muy grande)
+    p_proc_lbl = doc.add_paragraph()
+    p_proc_lbl.paragraph_format.space_before = Pt(18)
+    p_proc_lbl.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    r_p_etiq = p_proc_lbl.add_run("≡ PROCEDIMIENTO")
+    r_p_etiq.font.size = Pt(9)
     r_p_etiq.font.color.rgb = GRIS_ETIQUETA
-    r_p_val = p_proc.add_run(limpiar_texto(meta.get("procedimiento", "INFORME DE MANTENIMIENTO PREVENTIVO")).upper())
-    r_p_val.font.size = Pt(11)
+
+    p_proc_val = doc.add_paragraph()
+    p_proc_val.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p_proc_val.paragraph_format.left_indent = Cm(0.5)
+    r_p_val = p_proc_val.add_run(limpiar_texto(meta.get("procedimiento", "INFORME DE MANTENIMIENTO PREVENTIVO")).upper())
+    r_p_val.font.size = Pt(16)
     r_p_val.bold = True
     r_p_val.font.color.rgb = AZUL_LINK
     r_p_val.underline = True
@@ -315,11 +295,11 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     # CHECKLISTS APILADOS
     for sec in secciones:
         ps = doc.add_paragraph()
-        ps.paragraph_format.space_before = Pt(18)
-        ps.paragraph_format.space_after = Pt(4)
+        ps.paragraph_format.space_before = Pt(24)
+        ps.paragraph_format.space_after = Pt(6)
         run_sec = ps.add_run(limpiar_texto(sec["nombre"]))
         run_sec.bold = True
-        run_sec.font.size = Pt(10)
+        run_sec.font.size = Pt(13)
         run_sec.font.color.rgb = NEGRO_VALOR
         
         for campo in sec.get("campos", []):
@@ -328,31 +308,31 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             
             p_item = doc.add_paragraph()
             p_item.paragraph_format.space_after = Pt(0)
-            p_item.paragraph_format.space_before = Pt(6)
+            p_item.paragraph_format.space_before = Pt(8)
             etiqueta_texto = e if e.endswith(":") else f"{e}:"
             r_e = p_item.add_run(etiqueta_texto)
-            r_e.font.size = Pt(8.5)
+            r_e.font.size = Pt(10.5)
             r_e.font.color.rgb = NEGRO_VALOR
             
             p_val = doc.add_paragraph()
             p_val.paragraph_format.space_after = Pt(0)
             
             r_icon = p_val.add_run("◉ ")
-            r_icon.font.size = Pt(9.5)
+            r_icon.font.size = Pt(11)
             r_icon.font.color.rgb = AZUL_LINK
             
             r_v = p_val.add_run(v)
-            r_v.font.size = Pt(9.5)
+            r_v.font.size = Pt(11)
             r_v.bold = True
             r_v.font.color.rgb = NEGRO_VALOR
 
     # OBSERVACIONES Y RECOMENDACIONES
     p_obs_title = doc.add_paragraph()
-    p_obs_title.paragraph_format.space_before = Pt(24)
-    p_obs_title.paragraph_format.space_after = Pt(6)
+    p_obs_title.paragraph_format.space_before = Pt(28)
+    p_obs_title.paragraph_format.space_after = Pt(8)
     r_obs_title = p_obs_title.add_run("Observaciones y Recomendaciones")
     r_obs_title.bold = True
-    r_obs_title.font.size = Pt(10)
+    r_obs_title.font.size = Pt(13)
     
     todas_observaciones = []
     if obs.get("para_cliente"): todas_observaciones.append(limpiar_texto(obs["para_cliente"]))
@@ -363,59 +343,86 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         todas_observaciones.append(limpiar_texto(observaciones_extra))
 
     for observacion in todas_observaciones:
-        p_item = doc.add_paragraph(observacion)
-        p_item.paragraph_format.space_after = Pt(4)
-        p_item.runs[0].font.size = Pt(9)
+        p_item = doc.add_paragraph(style='List Bullet')
+        p_item.paragraph_format.space_after = Pt(6)
+        r_obs = p_item.add_run(observacion)
+        r_obs.font.size = Pt(11)
+        r_obs.font.color.rgb = NEGRO_VALOR
         
     if obs.get("evaluacion_final"):
         p_eval = doc.add_paragraph()
-        p_eval.paragraph_format.space_before = Pt(8)
-        r_et_ev = p_eval.add_run("Evaluación final: ")
-        r_et_ev.bold = True
-        r_et_ev.font.color.rgb = GRIS_ETIQUETA
+        p_eval.paragraph_format.space_before = Pt(12)
+        r_et_ev = p_eval.add_run("Evaluación final:\n")
+        r_et_ev.font.size = Pt(10.5)
+        r_et_ev.font.color.rgb = NEGRO_VALOR
+        
+        r_icon_ev = p_eval.add_run("◉ ")
+        r_icon_ev.font.size = Pt(11)
+        r_icon_ev.font.color.rgb = AZUL_LINK
         r_ev = p_eval.add_run(limpiar_texto(obs["evaluacion_final"]))
+        r_ev.font.size = Pt(11)
         r_ev.bold = True
+        r_ev.font.color.rgb = NEGRO_VALOR
 
     # FIRMA
     doc.add_paragraph()
     pfi = doc.add_paragraph()
     run_firma = pfi.add_run("Firma del cliente:")
     run_firma.bold = True
-    run_firma.font.size = Pt(9)
+    run_firma.font.size = Pt(11)
 
     if firma.get("data_base64"):
         try:
             img_bytes = base64.b64decode(firma["data_base64"])
             p_img = doc.add_paragraph()
-            p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(6))
+            p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(7))
         except Exception: pass
             
     if firma.get("texto"):
         pft = doc.add_paragraph(limpiar_texto(firma["texto"]))
-        pft.runs[0].font.size = Pt(8)
+        pft.runs[0].font.size = Pt(9)
         pft.runs[0].font.color.rgb = GRIS_ETIQUETA
 
     if meta.get("fecha_hora_salida"):
         ps2 = doc.add_paragraph(f"Fecha y Hora de salida: {limpiar_texto(meta['fecha_hora_salida'])}")
-        ps2.runs[0].font.size = Pt(8)
+        ps2.runs[0].font.size = Pt(9)
         ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
 
-    # FOTOGRAFÍAS
+    # FOTOGRAFÍAS (Con marco azul usando tabla 1x1)
     if fotos:
         for foto in fotos:
             doc.add_page_break()
             p_foto_title = doc.add_paragraph()
             r_ft_title = p_foto_title.add_run(limpiar_texto(foto.get("titulo", "Fotografía:")))
             r_ft_title.bold = True
-            r_ft_title.font.size = Pt(11)
+            r_ft_title.font.size = Pt(13)
             
             if foto.get("data_base64"):
                 try:
                     img_bytes = base64.b64decode(foto["data_base64"])
-                    p_img = doc.add_paragraph()
+                    
+                    tbl_img = doc.add_table(rows=1, cols=1)
+                    tbl_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    c_img = tbl_img.cell(0, 0)
+                    
+                    set_cell_border(c_img, 
+                                    top={"val": "single", "sz": "16", "color": "2563EB"},
+                                    bottom={"val": "single", "sz": "16", "color": "2563EB"},
+                                    left={"val": "single", "sz": "16", "color": "2563EB"},
+                                    right={"val": "single", "sz": "16", "color": "2563EB"})
+                    
+                    p_img = c_img.paragraphs[0]
                     p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(16))
+                    p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(15))
                 except Exception: pass
+
+    # PIE DE PÁGINA (Solo "Generado para CHG Ascensores")
+    ftr = seccion.footer
+    p_f = ftr.paragraphs[0]
+    p_f.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    r_f = p_f.add_run("Generado para CHG Ascensores")
+    r_f.font.color.rgb = GRIS_ETIQUETA
+    r_f.font.size = Pt(9)
 
     buf = io.BytesIO()
     doc.save(buf)
