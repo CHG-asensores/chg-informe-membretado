@@ -101,6 +101,14 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+import io, base64, re, zipfile, shutil, os, tempfile
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
     if not os.path.exists(ruta_imagen_png):
         return docx_bytes
@@ -154,7 +162,7 @@ def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
                 with open(settings_path, 'w', encoding='utf-8') as f:
                     f.write(set_data)
         
-        # 5. Reempaquetar ZIP
+        # 5. Reempaquetar ZIP con zipfile
         final_docx_path = os.path.join(tmpdir, 'final.docx')
         with zipfile.ZipFile(final_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(extract_dir):
@@ -184,6 +192,25 @@ def set_cell_border(cell, **kwargs):
             for key, val in edge_data.items():
                 element.set(qn('w:{}'.format(key)), str(val))
 
+def set_cell_margins_zero(cell):
+    """Elimina el espacio en blanco de las celdas para que el borde abrace a la imagen."""
+    tcPr = cell._tc.get_or_add_tcPr()
+    tcMar = OxmlElement('w:tcMar')
+    for m in ('top', 'left', 'bottom', 'right'):
+        node = OxmlElement(f'w:{m}')
+        node.set(qn('w:w'), '0')
+        node.set(qn('w:type'), 'dxa')
+        tcMar.append(node)
+    tcPr.append(tcMar)
+
+def set_cell_bg_color(cell, color):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), color)
+    tcPr.append(shd)
+
 def limpiar_texto(texto):
     if not texto: return "-"
     limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
@@ -207,7 +234,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     style = doc.styles['Normal']
     style.font.name = 'Arial'
-    style.font.size = Pt(11) # Base aumentada
+    style.font.size = Pt(11)
 
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
 
@@ -217,7 +244,28 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     obs = data.get("observaciones", {})
     firma = data.get("firma", {})
 
-    # METADATOS EN COLUMNAS (Aumentado de tamaño)
+    tbl_top = doc.add_table(rows=1, cols=2)
+    tbl_top.autofit = False
+    tbl_top.columns[0].width = Cm(1.2) 
+    tbl_top.columns[1].width = Cm(6.0) 
+    
+    cell_box = tbl_top.cell(0, 0)
+    set_cell_bg_color(cell_box, "111827")
+    p_box = cell_box.paragraphs[0]
+    p_box.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r_box = p_box.add_run("CHG") 
+    r_box.font.color.rgb = RGBColor(255, 255, 255)
+    r_box.font.bold = True
+    r_box.font.size = Pt(7)
+    
+    cell_text = tbl_top.cell(0, 1)
+    p_text = cell_text.paragraphs[0]
+    r_text = p_text.add_run("  CHG Ascensores")
+    r_text.font.bold = True
+    r_text.font.size = Pt(10)
+
+    doc.add_paragraph()
+
     tbl_meta = doc.add_table(rows=4, cols=2)
     tbl_meta.autofit = False
     tbl_meta.columns[0].width = Cm(9.0)
@@ -275,7 +323,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     doc.add_paragraph()
     
-    # PROCEDIMIENTO (Alineado a la izquierda, título muy grande)
     p_proc_lbl = doc.add_paragraph()
     p_proc_lbl.paragraph_format.space_before = Pt(18)
     p_proc_lbl.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -292,7 +339,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     r_p_val.font.color.rgb = AZUL_LINK
     r_p_val.underline = True
 
-    # CHECKLISTS APILADOS
     for sec in secciones:
         ps = doc.add_paragraph()
         ps.paragraph_format.space_before = Pt(24)
@@ -326,7 +372,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             r_v.bold = True
             r_v.font.color.rgb = NEGRO_VALOR
 
-    # OBSERVACIONES Y RECOMENDACIONES
     p_obs_title = doc.add_paragraph()
     p_obs_title.paragraph_format.space_before = Pt(28)
     p_obs_title.paragraph_format.space_after = Pt(8)
@@ -364,7 +409,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         r_ev.bold = True
         r_ev.font.color.rgb = NEGRO_VALOR
 
-    # FIRMA
     doc.add_paragraph()
     pfi = doc.add_paragraph()
     run_firma = pfi.add_run("Firma del cliente:")
@@ -388,11 +432,11 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         ps2.runs[0].font.size = Pt(9)
         ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
 
-    # FOTOGRAFÍAS (Con marco azul usando tabla 1x1)
+    # FOTOGRAFÍAS - Eliminado el page_break y ajustado el borde para que abrace la imagen
     if fotos:
         for foto in fotos:
-            doc.add_page_break()
             p_foto_title = doc.add_paragraph()
+            p_foto_title.paragraph_format.space_before = Pt(18)
             r_ft_title = p_foto_title.add_run(limpiar_texto(foto.get("titulo", "Fotografía:")))
             r_ft_title.bold = True
             r_ft_title.font.size = Pt(13)
@@ -405,24 +449,18 @@ def generar_docx_con_observaciones(data, observaciones_extra):
                     tbl_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     c_img = tbl_img.cell(0, 0)
                     
+                    set_cell_margins_zero(c_img)
+                    
                     set_cell_border(c_img, 
-                                    top={"val": "single", "sz": "16", "color": "2563EB"},
-                                    bottom={"val": "single", "sz": "16", "color": "2563EB"},
-                                    left={"val": "single", "sz": "16", "color": "2563EB"},
-                                    right={"val": "single", "sz": "16", "color": "2563EB"})
+                                    top={"val": "single", "sz": "12", "color": "2563EB"},
+                                    bottom={"val": "single", "sz": "12", "color": "2563EB"},
+                                    left={"val": "single", "sz": "12", "color": "2563EB"},
+                                    right={"val": "single", "sz": "12", "color": "2563EB"})
                     
                     p_img = c_img.paragraphs[0]
                     p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(15))
                 except Exception: pass
-
-    # PIE DE PÁGINA (Solo "Generado para CHG Ascensores")
-    ftr = seccion.footer
-    p_f = ftr.paragraphs[0]
-    p_f.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    r_f = p_f.add_run("Generado para CHG Ascensores")
-    r_f.font.color.rgb = GRIS_ETIQUETA
-    r_f.font.size = Pt(9)
 
     buf = io.BytesIO()
     doc.save(buf)
