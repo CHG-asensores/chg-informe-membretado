@@ -475,216 +475,210 @@ def limpiar_texto(texto):
     limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
     return limpio if limpio else "-"
 
-def generar_docx_con_observaciones(data, observaciones_extra):
-    doc = Document()
-    
-    # 1. CONFIGURACIÓN DE PÁGINA
-    seccion = doc.sections[0]
-    seccion.page_height = Cm(29.7)
-    seccion.page_width = Cm(21.0)
-    
-    # Márgenes de contenido: Top a 4.5 para no pisar el logo superior del fondo
-    # Bottom a 3.5 para no pisar la información de la empresa (pie del fondo)
-    seccion.top_margin = Cm(4.5)
-    seccion.bottom_margin = Cm(3.5)
-    seccion.left_margin = Cm(1.5)
-    seccion.right_margin = Cm(1.5)
-    
-    AZUL_LINK = RGBColor(0x25, 0x63, 0xEB)
-    GRIS_ETIQUETA = RGBColor(0x6B, 0x72, 0x80)
-    NEGRO_VALOR = RGBColor(0x00, 0x00, 0x00)
-    VERDE_OK = RGBColor(0x10, 0xB9, 0x81)
+import io
+import base64
+import re
+import zipfile
+import shutil
+import os
+import tempfile
+from pathlib import Path
+from lxml import etree
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
-    style = doc.styles['Normal']
-    style.font.name = 'Arial'
-    style.font.size = Pt(9.5)
+def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
+    """Inserta imagen como fondo de página completa en el docx manipulando su ZIP interno."""
+    if not os.path.exists(ruta_imagen_png):
+        return docx_bytes
 
-    # 2. MARCA DE AGUA
-    LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
-    if LOGO.exists():
-        agregar_marca_agua(seccion, str(LOGO))
-
-    # 3. EXTRACCIÓN DE DATOS
-    meta = data.get("meta", {})
-    secciones = data.get("secciones", [])
-    fotos = data.get("fotos", [])
-    obs = data.get("observaciones", {})
-    firma = data.get("firma", {})
-
-    # 4. METADATOS
-    tbl_meta = doc.add_table(rows=4, cols=2)
-    tbl_meta.autofit = False
-    tbl_meta.columns[0].width = Cm(9.0)
-    tbl_meta.columns[1].width = Cm(9.0)
-
-    def fill_cell(cell, icon, label, value, is_status=False, is_category=False):
-        p = cell.paragraphs[0]
-        p.paragraph_format.space_after = Pt(8)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_docx_path = os.path.join(tmpdir, 'temp.docx')
+        with open(tmp_docx_path, 'wb') as f:
+            f.write(docx_bytes)
         
-        r_label = p.add_run(f"{icon} {label.upper()}\n")
-        r_label.font.size = Pt(7.5)
-        r_label.font.color.rgb = GRIS_ETIQUETA
-        
-        val_clean = limpiar_texto(value)
-        
-        if is_status:
-            r_val = p.add_run(f"✓ {val_clean}")
-            r_val.font.color.rgb = VERDE_OK
-            r_val.font.bold = True
-            r_val.font.size = Pt(10)
-        elif is_category:
-            p.text = "" 
-            p.add_run(f"{icon} {label.upper()}").font.color.rgb = GRIS_ETIQUETA
-            p.runs[0].font.size = Pt(7.5)
+        extract_dir = os.path.join(tmpdir, 'extracted')
+        with zipfile.ZipFile(tmp_docx_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
             
-            t_cat = cell.add_table(rows=1, cols=1)
-            c_cat = t_cat.cell(0, 0)
-            set_cell_border(c_cat, 
-                            top={"val": "single", "sz": "4", "color": "2563EB"},
-                            bottom={"val": "single", "sz": "4", "color": "2563EB"},
-                            left={"val": "single", "sz": "4", "color": "2563EB"},
-                            right={"val": "single", "sz": "4", "color": "2563EB"})
-            p_cat = c_cat.paragraphs[0]
-            r_cat = p_cat.add_run(val_clean)
-            r_cat.font.color.rgb = AZUL_LINK
-            r_cat.font.size = Pt(9.5)
+        # 1. Copiar la imagen a word/media/
+        media_dir = os.path.join(extract_dir, 'word', 'media')
+        os.makedirs(media_dir, exist_ok=True)
+        shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg_watermark.png'))
+        
+        # 2. Actualizar word/_rels/document.xml.rels
+        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
+        ns_rels = 'http://schemas.openxmlformats.org/package/2006/relationships'
+        etree.register_namespace('', ns_rels)
+        tree_rels = etree.parse(rels_path)
+        root_rels = tree_rels.getroot()
+        
+        bg_rId = "rIdBgWatermark"
+        new_rel = etree.Element(f"{{{ns_rels}}}Relationship", 
+                                Id=bg_rId, 
+                                Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", 
+                                Target="media/bg_watermark.png")
+        root_rels.append(new_rel)
+        tree_rels.write(rels_path, xml_declaration=True, encoding='UTF-8')
+        
+        # 3. Actualizar word/document.xml
+        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
+        ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+        ns_v = 'urn:schemas-microsoft-com:vml'
+        ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+        ns_o = 'urn:schemas-microsoft-com:office:office'
+        
+        tree_doc = etree.parse(doc_path)
+        root_doc = tree_doc.getroot()
+        
+        bg_elem = etree.Element(f"{{{ns_w}}}background", {f"{{{ns_w}}}color": "FFFFFF"})
+        v_bg = etree.SubElement(bg_elem, f"{{{ns_v}}}background", id="_x0000_s1025")
+        v_bg.set(f"{{{ns_o}}}bwmode", "white")
+        v_bg.set(f"{{{ns_o}}}targetscreensize", "1024,768")
+        
+        v_fill = etree.SubElement(v_bg, f"{{{ns_v}}}fill")
+        v_fill.set(f"{{{ns_r}}}id", bg_rId)
+        v_fill.set(f"{{{ns_o}}}title", "Fondo")
+        v_fill.set("type", "frame")
+        
+        # Insertar el background justo antes de <w:body>
+        body_elem = root_doc.find(f"{{{ns_w}}}body")
+        if body_elem is not None:
+            body_index = root_doc.index(body_elem)
+            root_doc.insert(body_index, bg_elem)
         else:
-            r_val = p.add_run(val_clean)
-            r_val.font.bold = True
-            r_val.font.color.rgb = NEGRO_VALOR
-            r_val.font.size = Pt(10)
+            root_doc.insert(0, bg_elem)
+            
+        tree_doc.write(doc_path, xml_declaration=True, encoding='UTF-8')
 
-    fill_cell(tbl_meta.cell(0, 0), "🔒", "ESTADO", meta.get("estado", "-"), is_status=True)
-    fill_cell(tbl_meta.cell(0, 1), "🕒", "FECHA DE VENCIMIENTO", meta.get("fecha_vencimiento", "-"))
-    fill_cell(tbl_meta.cell(1, 0), "⏱️", "TIEMPO ESTIMADO", meta.get("tiempo_estimado", "-"))
-    fill_cell(tbl_meta.cell(1, 1), "🔨", "TIPO DE TRABAJO", meta.get("tipo_trabajo", "-"))
-    fill_cell(tbl_meta.cell(2, 0), "👥", "ASIGNADOS", ", ".join(meta.get("asignados", [])) or "-")
-    fill_cell(tbl_meta.cell(2, 1), "🏷️", "CATEGORÍAS", ", ".join(meta.get("categorias", [])) or "-", is_category=True)
-    fill_cell(tbl_meta.cell(3, 0), "📍", "UBICACIÓN", meta.get("ubicacion", "-"))
-    fill_cell(tbl_meta.cell(3, 1), "🏢", "ACTIVO", meta.get("activo", "-"))
-
-    doc.add_paragraph()
-    p_proc = doc.add_paragraph()
-    p_proc.paragraph_format.space_before = Pt(12)
-    p_proc.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_p_etiq = p_proc.add_run("≡ PROCEDIMIENTO\n")
-    r_p_etiq.font.size = Pt(7)
-    r_p_etiq.font.color.rgb = GRIS_ETIQUETA
-    r_p_val = p_proc.add_run(limpiar_texto(meta.get("procedimiento", "INFORME DE MANTENIMIENTO PREVENTIVO")).upper())
-    r_p_val.font.size = Pt(11)
-    r_p_val.bold = True
-    r_p_val.font.color.rgb = AZUL_LINK
-    r_p_val.underline = True
-
-    # 5. CHECKLISTS APILADOS
-    for sec in secciones:
-        ps = doc.add_paragraph()
-        ps.paragraph_format.space_before = Pt(18)
-        ps.paragraph_format.space_after = Pt(4)
-        run_sec = ps.add_run(limpiar_texto(sec["nombre"]))
-        run_sec.bold = True
-        run_sec.font.size = Pt(10)
-        run_sec.font.color.rgb = NEGRO_VALOR
+        # 4. Forzar configuración para que el fondo sea visible e imprimible en Word
+        settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
+        if os.path.exists(settings_path):
+            tree_set = etree.parse(settings_path)
+            root_set = tree_set.getroot()
+            if root_set.find(f"{{{ns_w}}}displayBackgroundShape") is None:
+                disp = etree.Element(f"{{{ns_w}}}displayBackgroundShape")
+                root_set.append(disp)
+            tree_set.write(settings_path, xml_declaration=True, encoding='UTF-8')
         
-        for campo in sec.get("campos", []):
-            e = limpiar_texto(campo.get("etiqueta", ""))
-            v = limpiar_texto(campo.get("valor", "-"))
-            
-            p_item = doc.add_paragraph()
-            p_item.paragraph_format.space_after = Pt(0)
-            p_item.paragraph_format.space_before = Pt(6)
-            etiqueta_texto = e if e.endswith(":") else f"{e}:"
-            r_e = p_item.add_run(etiqueta_texto)
-            r_e.font.size = Pt(8.5)
-            r_e.font.color.rgb = NEGRO_VALOR
-            
-            p_val = doc.add_paragraph()
-            p_val.paragraph_format.space_after = Pt(0)
-            
-            r_icon = p_val.add_run("◉ ")
-            r_icon.font.size = Pt(9.5)
-            r_icon.font.color.rgb = AZUL_LINK
-            
-            r_v = p_val.add_run(v)
-            r_v.font.size = Pt(9.5)
-            r_v.bold = True
-            r_v.font.color.rgb = NEGRO_VALOR
+        # 5. Volver a empaquetar el ZIP (.docx)
+        new_docx_path = os.path.join(tmpdir, 'final.docx')
+        with zipfile.ZipFile(new_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(extract_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, extract_dir)
+                    zipf.write(file_path, arcname)
+                    
+        with open(new_docx_path, 'rb') as f:
+            return f.read()
 
-    # 6. OBSERVACIONES Y RECOMENDACIONES
-    p_obs_title = doc.add_paragraph()
-    p_obs_title.paragraph_format.space_before = Pt(24)
-    p_obs_title.paragraph_format.space_after = Pt(6)
-    r_obs_title = p_obs_title.add_run("Observaciones y Recomendaciones")
-    r_obs_title.bold = True
-    r_obs_title.font.size = Pt(10)
-    
-    todas_observaciones = []
-    if obs.get("para_cliente"): todas_observaciones.append(limpiar_texto(obs["para_cliente"]))
-    if obs.get("para_chg") and obs["para_chg"] != "-": todas_observaciones.append(f"Para CHG: {limpiar_texto(obs['para_chg'])}")
-    if isinstance(observaciones_extra, list):
-        todas_observaciones.extend([limpiar_texto(o) for o in observaciones_extra])
-    elif isinstance(observaciones_extra, str) and observaciones_extra:
-        todas_observaciones.append(limpiar_texto(observaciones_extra))
+def set_cell_border(cell, **kwargs):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcBorders = tcPr.first_child_found_in("w:tcBorders")
+    if tcBorders is None:
+        tcBorders = OxmlElement('w:tcBorders')
+        tcPr.append(tcBorders)
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        edge_data = kwargs.get(edge)
+        if edge_data:
+            tag = 'w:{}'.format(edge)
+            element = tcBorders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tcBorders.append(element)
+            for key, val in edge_data.items():
+                element.set(qn('w:{}'.format(key)), str(val))
 
-    for observacion in todas_observaciones:
-        p_item = doc.add_paragraph(observacion)
-        p_item.paragraph_format.space_after = Pt(4)
-        p_item.runs[0].font.size = Pt(9)
-        
-    if obs.get("evaluacion_final"):
-        p_eval = doc.add_paragraph()
-        p_eval.paragraph_format.space_before = Pt(8)
-        r_et_ev = p_eval.add_run("Evaluación final: ")
-        r_et_ev.bold = True
-        r_et_ev.font.color.rgb = GRIS_ETIQUETA
-        r_ev = p_eval.add_run(limpiar_texto(obs["evaluacion_final"]))
-        r_ev.bold = True
+def set_cell_bg_color(cell, color):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), color)
+    tcPr.append(shd)
 
-    # 7. FIRMA
-    doc.add_paragraph()
-    pfi = doc.add_paragraph()
-    run_firma = pfi.add_run("Firma del cliente:")
-    run_firma.bold = True
-    run_firma.font.size = Pt(9)
+def limpiar_texto(texto):
+    if not texto: return "-"
+    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
+    return limpio if limpio else "-"
 
-    if firma.get("data_base64"):
-        try:
-            img_bytes = base64.b64decode(firma["data_base64"])
-            p_img = doc.add_paragraph()
-            p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(6))
-        except Exception: pass
-            
-    if firma.get("texto"):
-        pft = doc.add_paragraph(limpiar_texto(firma["texto"]))
-        pft.runs[0].font.size = Pt(8)
-        pft.runs[0].font.color.rgb = GRIS_ETIQUETA
+def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
+    if not os.path.exists(ruta_imagen_png):
+        return docx_bytes
 
-    if meta.get("fecha_hora_salida"):
-        ps2 = doc.add_paragraph(f"Fecha y Hora de salida: {limpiar_texto(meta['fecha_hora_salida'])}")
-        ps2.runs[0].font.size = Pt(8)
-        ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = os.path.join(tmpdir, 'temp.docx')
+        with open(tmp_path, 'wb') as f:
+            f.write(docx_bytes)
 
-    # 8. FOTOGRAFÍAS
-    if fotos:
-        for foto in fotos:
-            doc.add_page_break()
-            p_foto_title = doc.add_paragraph()
-            r_ft_title = p_foto_title.add_run(limpiar_texto(foto.get("titulo", "Fotografía:")))
-            r_ft_title.bold = True
-            r_ft_title.font.size = Pt(11)
-            
-            if foto.get("data_base64"):
-                try:
-                    img_bytes = base64.b64decode(foto["data_base64"])
-                    p_img = doc.add_paragraph()
-                    p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(16))
-                except Exception: pass
+        extract_dir = os.path.join(tmpdir, 'extracted')
+        with zipfile.ZipFile(tmp_path, 'r') as z:
+            z.extractall(extract_dir)
 
-    buf = io.BytesIO()
-    doc.save(buf)
-    buf.seek(0)
-    return buf.read()
+        # Copiar imagen
+        media_dir = os.path.join(extract_dir, 'word', 'media')
+        os.makedirs(media_dir, exist_ok=True)
+        shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg.png'))
+
+        # Agregar relacion en document.xml.rels
+        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
+        with open(rels_path, 'r', encoding='utf-8') as f:
+            rels = f.read()
+        if 'rIdBg' not in rels:
+            rels = rels.replace('</Relationships>',
+                '<Relationship Id="rIdBg" '
+                'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+                'Target="media/bg.png"/></Relationships>')
+            with open(rels_path, 'w', encoding='utf-8') as f:
+                f.write(rels)
+
+        # Agregar background en document.xml
+        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
+        with open(doc_path, 'r', encoding='utf-8') as f:
+            doc_xml = f.read()
+        bg_xml = (
+            '<w:background w:color="FFFFFF" '
+            'xmlns:v="urn:schemas-microsoft-com:vml" '
+            'xmlns:o="urn:schemas-microsoft-com:office:office" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<v:background id="_x0000_s1025" o:bwmode="white">'
+            '<v:fill r:id="rIdBg" o:title="bg" type="frame"/>'
+            '</v:background></w:background>'
+        )
+        if '<w:background' not in doc_xml:
+            doc_xml = doc_xml.replace('<w:body>', bg_xml + '<w:body>', 1)
+            with open(doc_path, 'w', encoding='utf-8') as f:
+                f.write(doc_xml)
+
+        # Activar displayBackgroundShape en settings.xml
+        settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = f.read()
+            if 'displayBackgroundShape' not in settings:
+                settings = settings.replace('</w:settings>',
+                    '<w:displayBackgroundShape/></w:settings>')
+                with open(settings_path, 'w', encoding='utf-8') as f:
+                    f.write(settings)
+
+        # Reempaquetar preservando tipos MIME originales
+        new_path = os.path.join(tmpdir, 'final.docx')
+        with zipfile.ZipFile(tmp_path, 'r') as orig_zip:
+            orig_names = {i.filename: i for i in orig_zip.infolist()}
+        with zipfile.ZipFile(new_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for root, dirs, files in os.walk(extract_dir):
+                for file in files:
+                    fp = os.path.join(root, file)
+                    arcname = os.path.relpath(fp, extract_dir)
+                    zout.write(fp, arcname)
+
+        with open(new_path, 'rb') as f:
+            return f.read()
 
 
 UI = """<!DOCTYPE html>
