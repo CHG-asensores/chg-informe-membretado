@@ -82,99 +82,70 @@ import re
 import zipfile
 import shutil
 import os
-import tempfile
-from pathlib import Path
-from lxml import etree
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
-    """Inserta imagen como fondo de página completa en el docx manipulando su ZIP interno."""
     if not os.path.exists(ruta_imagen_png):
         return docx_bytes
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_docx_path = os.path.join(tmpdir, 'temp.docx')
-        with open(tmp_docx_path, 'wb') as f:
+        tmp_path = os.path.join(tmpdir, 'temp.docx')
+        with open(tmp_path, 'wb') as f:
             f.write(docx_bytes)
-        
+
         extract_dir = os.path.join(tmpdir, 'extracted')
-        with zipfile.ZipFile(tmp_docx_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
-            
-        # 1. Copiar la imagen a word/media/
+        with zipfile.ZipFile(tmp_path, 'r') as z:
+            z.extractall(extract_dir)
+
         media_dir = os.path.join(extract_dir, 'word', 'media')
         os.makedirs(media_dir, exist_ok=True)
-        shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg_watermark.png'))
-        
-        # 2. Actualizar word/_rels/document.xml.rels
-        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
-        ns_rels = 'http://schemas.openxmlformats.org/package/2006/relationships'
-        etree.register_namespace('', ns_rels)
-        tree_rels = etree.parse(rels_path)
-        root_rels = tree_rels.getroot()
-        
-        bg_rId = "rIdBgWatermark"
-        new_rel = etree.Element(f"{{{ns_rels}}}Relationship", 
-                                Id=bg_rId, 
-                                Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", 
-                                Target="media/bg_watermark.png")
-        root_rels.append(new_rel)
-        tree_rels.write(rels_path, xml_declaration=True, encoding='UTF-8')
-        
-        # 3. Actualizar word/document.xml
-        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
-        ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-        ns_v = 'urn:schemas-microsoft-com:vml'
-        ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-        ns_o = 'urn:schemas-microsoft-com:office:office'
-        
-        tree_doc = etree.parse(doc_path)
-        root_doc = tree_doc.getroot()
-        
-        bg_elem = etree.Element(f"{{{ns_w}}}background", {f"{{{ns_w}}}color": "FFFFFF"})
-        v_bg = etree.SubElement(bg_elem, f"{{{ns_v}}}background", id="_x0000_s1025")
-        v_bg.set(f"{{{ns_o}}}bwmode", "white")
-        v_bg.set(f"{{{ns_o}}}targetscreensize", "1024,768")
-        
-        v_fill = etree.SubElement(v_bg, f"{{{ns_v}}}fill")
-        v_fill.set(f"{{{ns_r}}}id", bg_rId)
-        v_fill.set(f"{{{ns_o}}}title", "Fondo")
-        v_fill.set("type", "frame")
-        
-        # Insertar el background justo antes de <w:body>
-        body_elem = root_doc.find(f"{{{ns_w}}}body")
-        if body_elem is not None:
-            body_index = root_doc.index(body_elem)
-            root_doc.insert(body_index, bg_elem)
-        else:
-            root_doc.insert(0, bg_elem)
-            
-        tree_doc.write(doc_path, xml_declaration=True, encoding='UTF-8')
+        shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg.png'))
 
-        # 4. Forzar configuración para que el fondo sea visible e imprimible en Word
+        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
+        with open(rels_path, 'r', encoding='utf-8') as f:
+            rels = f.read()
+        if 'rIdBg' not in rels:
+            rels = rels.replace('</Relationships>',
+                '<Relationship Id="rIdBg" '
+                'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+                'Target="media/bg.png"/></Relationships>')
+            with open(rels_path, 'w', encoding='utf-8') as f:
+                f.write(rels)
+
+        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
+        with open(doc_path, 'r', encoding='utf-8') as f:
+            doc_xml = f.read()
+        bg_xml = (
+            '<w:background w:color="FFFFFF" '
+            'xmlns:v="urn:schemas-microsoft-com:vml" '
+            'xmlns:o="urn:schemas-microsoft-com:office:office" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<v:background id="_x0000_s1025" o:bwmode="white">'
+            '<v:fill r:id="rIdBg" o:title="bg" type="frame"/>'
+            '</v:background></w:background>'
+        )
+        if '<w:background' not in doc_xml:
+            doc_xml = doc_xml.replace('<w:body>', bg_xml + '<w:body>', 1)
+            with open(doc_path, 'w', encoding='utf-8') as f:
+                f.write(doc_xml)
+
         settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
         if os.path.exists(settings_path):
-            tree_set = etree.parse(settings_path)
-            root_set = tree_set.getroot()
-            if root_set.find(f"{{{ns_w}}}displayBackgroundShape") is None:
-                disp = etree.Element(f"{{{ns_w}}}displayBackgroundShape")
-                root_set.append(disp)
-            tree_set.write(settings_path, xml_declaration=True, encoding='UTF-8')
-        
-        # 5. Volver a empaquetar el ZIP (.docx)
-        new_docx_path = os.path.join(tmpdir, 'final.docx')
-        with zipfile.ZipFile(new_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = f.read()
+            if 'displayBackgroundShape' not in settings:
+                settings = settings.replace('</w:settings>',
+                    '<w:displayBackgroundShape/></w:settings>')
+                with open(settings_path, 'w', encoding='utf-8') as f:
+                    f.write(settings)
+
+        new_path = os.path.join(tmpdir, 'final.docx')
+        with zipfile.ZipFile(new_path, 'w', zipfile.ZIP_DEFLATED) as zout:
             for root, dirs, files in os.walk(extract_dir):
                 for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, extract_dir)
-                    zipf.write(file_path, arcname)
-                    
-        with open(new_docx_path, 'rb') as f:
+                    fp = os.path.join(root, file)
+                    arcname = os.path.relpath(fp, extract_dir)
+                    zout.write(fp, arcname)
+
+        with open(new_path, 'rb') as f:
             return f.read()
 
 def set_cell_border(cell, **kwargs):
