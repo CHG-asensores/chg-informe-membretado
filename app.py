@@ -14,6 +14,12 @@ import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF para overlay del membrete
+from docx import Document as DocxDocument
+from docx.shared import Pt, RGBColor, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+import datetime
 from flask import Flask, jsonify, render_template_string, request, send_file
 from playwright.sync_api import sync_playwright
 
