@@ -14,6 +14,12 @@ import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF para overlay del membrete
+from docx import Document as DocxDocument
+from docx.shared import Pt, RGBColor, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+import datetime
 from flask import Flask, jsonify, render_template_string, request, send_file
 from playwright.sync_api import sync_playwright
 
@@ -362,6 +368,10 @@ UI = """<!DOCTYPE html>
       <button class="remove-btn" id="removeBtn" title="Quitar archivo">✕</button>
     </div>
 
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+      <label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label>
+      <textarea id="observaciones" rows="4" placeholder="Ej: El equipo requiere revision..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea>
+    </div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
       Generar informe membretado
@@ -397,7 +407,7 @@ UI = """<!DOCTYPE html>
       </div>
 
       <a class="btn-download" id="btnDownload" href="#" download>
-        ⬇️ Descargar PDF membretado
+        ⬇️ Descargar Word membretado (.docx)
       </a>
 
       <button class="btn-reset" id="btnReset">Procesar otro PDF</button>
@@ -542,6 +552,7 @@ UI = """<!DOCTYPE html>
 
     const form = new FormData();
     form.append('pdf', selectedFile);
+    form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
       const resp = await fetch('/generate', { method: 'POST', body: form });
@@ -571,6 +582,7 @@ def generate():
         return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
 
     pdf_bytes = request.files["pdf"].read()
+    observaciones = request.form.get("observaciones", "").strip()
     if not pdf_bytes:
         return jsonify({"error": "El archivo está vacío."}), 400
 
@@ -631,7 +643,7 @@ def download(file_id):
     filename, pdf_bytes = _pdf_store[file_id]
     return send_file(
         io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         as_attachment=True,
         download_name=filename,
     )
