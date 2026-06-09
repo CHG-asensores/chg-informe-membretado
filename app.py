@@ -75,611 +75,135 @@ def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
     return out
 
 
-import io
-import base64
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def set_cell_border(cell, **kwargs):
-    """
-    Función auxiliar para establecer los bordes de una celda específica.
-    kwargs acepta top, bottom, start, end con diccionarios de propiedades (ej. {'val': 'single', 'sz': '4', 'color': 'auto'})
-    """
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-import io
-import base64
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def set_cell_border(cell, **kwargs):
-    """
-    Permite manipular los bordes de una celda específica de Word para dar el aspecto de "formulario web".
-    kwargs acepta: top, bottom, start, end, left, right.
-    """
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def remove_all_borders(table):
-    """Elimina todos los bordes de una tabla para que sirva solo para maquetación."""
-    for row in table.rows:
-        for cell in row.cells:
-            set_cell_border(cell, 
-                            top={"val": "nil"}, bottom={"val": "nil"}, 
-                            left={"val": "nil"}, right={"val": "nil"})
-
-import io
-import base64
-import re
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def set_cell_border(cell, **kwargs):
-    """Manipula el XML para aplicar bordes finos estilo web."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def set_cell_margins(cell, top=50, bottom=50, start=100, end=100):
-    """Agrega padding interno a las celdas para que no se vean apretadas."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcMar = OxmlElement('w:tcMar')
-    for margin, value in [('top', top), ('bottom', bottom), ('left', start), ('right', end)]:
-        node = OxmlElement(f'w:{margin}')
-        node.set(qn('w:w'), str(value))
-        node.set(qn('w:type'), 'dxa')
-        tcMar.append(node)
-    tcPr.append(tcMar)
-
-def remove_all_borders(table):
-    for row in table.rows:
-        for cell in row.cells:
-            set_cell_border(cell, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
-            set_cell_margins(cell, top=80, bottom=80, start=0, end=0)
-
-def limpiar_texto(texto):
-    """Limpia caracteres basura (☑, V) que arrastra el OCR de los PDFs."""
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-import io
-import base64
-import re
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def set_cell_border(cell, **kwargs):
-    """Manipula el XML para aplicar bordes finos estilo web."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def set_cell_margins(cell, top=50, bottom=50, start=100, end=100):
-    """Agrega padding interno a las celdas para que no se vean apretadas."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcMar = OxmlElement('w:tcMar')
-    for margin, value in [('top', top), ('bottom', bottom), ('left', start), ('right', end)]:
-        node = OxmlElement(f'w:{margin}')
-        node.set(qn('w:w'), str(value))
-        node.set(qn('w:type'), 'dxa')
-        tcMar.append(node)
-    tcPr.append(tcMar)
-
-def remove_all_borders(table):
-    for row in table.rows:
-        for cell in row.cells:
-            set_cell_border(cell, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
-            set_cell_margins(cell, top=80, bottom=80, start=0, end=0)
-
-def limpiar_texto(texto):
-    """Limpia caracteres basura (☑, V) que arrastra el OCR de los PDFs."""
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-import io
-import base64
-import re
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def set_cell_border(cell, **kwargs):
-    """Manipula el XML para aplicar bordes a celdas específicas."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def limpiar_texto(texto):
-    """Limpia caracteres basura (☑, V) que arrastra el OCR de los PDFs."""
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-import io
-import base64
-import re
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def set_cell_border(cell, **kwargs):
-    """Aplica bordes personalizados a las celdas (ej. para la caja azul de Categorías)."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def set_cell_bg_color(cell, color):
-    """Establece el color de fondo de una celda (ej. caja negra)."""
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = OxmlElement('w:shd')
-    shd.set(qn('w:val'), 'clear')
-    shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'), color)
-    tcPr.append(shd)
-
-def limpiar_texto(texto):
-    """Limpia caracteres basura (☑, V) que arrastra el OCR de los PDFs."""
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-import io
-import base64
-import re
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
-from lxml import etree
-
-def agregar_marca_agua(seccion, ruta_imagen):
-    """Agrega imagen como fondo a página completa en el encabezado."""
-    hdr = seccion.header
-    # Limpiar encabezado
-    for p in hdr.paragraphs:
-        p.clear()
-    p = hdr.paragraphs[0]
-    run = p.add_run()
-    pic = run.add_picture(ruta_imagen, width=Cm(21), height=Cm(29.7))
-
-def set_cell_border(cell, **kwargs):
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def set_cell_bg_color(cell, color):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = OxmlElement('w:shd')
-    shd.set(qn('w:val'), 'clear')
-    shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'), color)
-    tcPr.append(shd)
-
-def limpiar_texto(texto):
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-import io
-import base64
-import re
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
-
-def agregar_marca_agua(seccion, ruta_imagen):
-    """Agrega imagen como fondo a página completa, detrás del texto."""
-    hdr = seccion.header
-    # Limpiar encabezado
-    for p in hdr.paragraphs:
-        p.clear()
-    
-    p = hdr.paragraphs[0]
-    run = p.add_run()
-    # Inserción base permitida
-    pic = run.add_picture(str(ruta_imagen), width=Cm(21), height=Cm(29.7))
-    
-    # Transformación a 'Detrás del texto' con reporte de errores
-    try:
-        drawing = run._r.find(qn('w:drawing'))
-        if drawing is not None:
-            inline = drawing.find(qn('wp:inline'))
-            if inline is not None:
-                anchor = OxmlElement('wp:anchor')
-                anchor.set('distT', '0')
-                anchor.set('distB', '0')
-                anchor.set('distL', '0')
-                anchor.set('distR', '0')
-                anchor.set('simplePos', '0')
-                anchor.set('relativeHeight', '0')
-                anchor.set('behindDoc', '1') # 1 = Detrás del texto
-                anchor.set('locked', '0')
-                anchor.set('layoutInCell', '1')
-                anchor.set('allowOverlap', '1')
-                
-                simplePos = OxmlElement('wp:simplePos')
-                simplePos.set('x', '0')
-                simplePos.set('y', '0')
-                anchor.append(simplePos)
-                
-                posH = OxmlElement('wp:positionH')
-                posH.set('relativeFrom', 'page')
-                offsetH = OxmlElement('wp:posOffset')
-                offsetH.text = '0'
-                posH.append(offsetH)
-                anchor.append(posH)
-                
-                posV = OxmlElement('wp:positionV')
-                posV.set('relativeFrom', 'page')
-                offsetV = OxmlElement('wp:posOffset')
-                offsetV.text = '0'
-                posV.append(offsetV)
-                anchor.append(posV)
-                
-                for child in list(inline):
-                    anchor.append(child)
-                    
-                drawing.replace(inline, anchor)
-    except Exception as e:
-        raise RuntimeError(f"Error al insertar marca de agua: {e}")
-
-def set_cell_border(cell, **kwargs):
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def limpiar_texto(texto):
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-import io
-import base64
-import re
-import zipfile
-import shutil
-import os
-import tempfile
-from pathlib import Path
-from lxml import etree
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
-    """Inserta imagen como fondo de página completa en el docx manipulando su ZIP interno."""
-    if not os.path.exists(ruta_imagen_png):
-        return docx_bytes
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_docx_path = os.path.join(tmpdir, 'temp.docx')
-        with open(tmp_docx_path, 'wb') as f:
-            f.write(docx_bytes)
-        
-        extract_dir = os.path.join(tmpdir, 'extracted')
-        with zipfile.ZipFile(tmp_docx_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
-            
-        # 1. Copiar la imagen a word/media/
-        media_dir = os.path.join(extract_dir, 'word', 'media')
-        os.makedirs(media_dir, exist_ok=True)
-        shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg_watermark.png'))
-        
-        # 2. Actualizar word/_rels/document.xml.rels
-        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
-        ns_rels = 'http://schemas.openxmlformats.org/package/2006/relationships'
-        etree.register_namespace('', ns_rels)
-        tree_rels = etree.parse(rels_path)
-        root_rels = tree_rels.getroot()
-        
-        bg_rId = "rIdBgWatermark"
-        new_rel = etree.Element(f"{{{ns_rels}}}Relationship", 
-                                Id=bg_rId, 
-                                Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", 
-                                Target="media/bg_watermark.png")
-        root_rels.append(new_rel)
-        tree_rels.write(rels_path, xml_declaration=True, encoding='UTF-8')
-        
-        # 3. Actualizar word/document.xml
-        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
-        ns_w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-        ns_v = 'urn:schemas-microsoft-com:vml'
-        ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-        ns_o = 'urn:schemas-microsoft-com:office:office'
-        
-        tree_doc = etree.parse(doc_path)
-        root_doc = tree_doc.getroot()
-        
-        bg_elem = etree.Element(f"{{{ns_w}}}background", {f"{{{ns_w}}}color": "FFFFFF"})
-        v_bg = etree.SubElement(bg_elem, f"{{{ns_v}}}background", id="_x0000_s1025")
-        v_bg.set(f"{{{ns_o}}}bwmode", "white")
-        v_bg.set(f"{{{ns_o}}}targetscreensize", "1024,768")
-        
-        v_fill = etree.SubElement(v_bg, f"{{{ns_v}}}fill")
-        v_fill.set(f"{{{ns_r}}}id", bg_rId)
-        v_fill.set(f"{{{ns_o}}}title", "Fondo")
-        v_fill.set("type", "frame")
-        
-        # Insertar el background justo antes de <w:body>
-        body_elem = root_doc.find(f"{{{ns_w}}}body")
-        if body_elem is not None:
-            body_index = root_doc.index(body_elem)
-            root_doc.insert(body_index, bg_elem)
-        else:
-            root_doc.insert(0, bg_elem)
-            
-        tree_doc.write(doc_path, xml_declaration=True, encoding='UTF-8')
-
-        # 4. Forzar configuración para que el fondo sea visible e imprimible en Word
-        settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
-        if os.path.exists(settings_path):
-            tree_set = etree.parse(settings_path)
-            root_set = tree_set.getroot()
-            if root_set.find(f"{{{ns_w}}}displayBackgroundShape") is None:
-                disp = etree.Element(f"{{{ns_w}}}displayBackgroundShape")
-                root_set.append(disp)
-            tree_set.write(settings_path, xml_declaration=True, encoding='UTF-8')
-        
-        # 5. Volver a empaquetar el ZIP (.docx)
-        new_docx_path = os.path.join(tmpdir, 'final.docx')
-        with zipfile.ZipFile(new_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(extract_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, extract_dir)
-                    zipf.write(file_path, arcname)
-                    
-        with open(new_docx_path, 'rb') as f:
-            return f.read()
-
-def set_cell_border(cell, **kwargs):
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = tcPr.first_child_found_in("w:tcBorders")
-    if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
-        tcPr.append(tcBorders)
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        edge_data = kwargs.get(edge)
-        if edge_data:
-            tag = 'w:{}'.format(edge)
-            element = tcBorders.find(qn(tag))
-            if element is None:
-                element = OxmlElement(tag)
-                tcBorders.append(element)
-            for key, val in edge_data.items():
-                element.set(qn('w:{}'.format(key)), str(val))
-
-def set_cell_bg_color(cell, color):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = OxmlElement('w:shd')
-    shd.set(qn('w:val'), 'clear')
-    shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'), color)
-    tcPr.append(shd)
-
-def limpiar_texto(texto):
-    if not texto: return "-"
-    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
-    return limpio if limpio else "-"
-
-def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
-    if not os.path.exists(ruta_imagen_png):
-        return docx_bytes
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = os.path.join(tmpdir, 'temp.docx')
-        with open(tmp_path, 'wb') as f:
-            f.write(docx_bytes)
-
-        extract_dir = os.path.join(tmpdir, 'extracted')
-        with zipfile.ZipFile(tmp_path, 'r') as z:
-            z.extractall(extract_dir)
-
-        # Copiar imagen
-        media_dir = os.path.join(extract_dir, 'word', 'media')
-        os.makedirs(media_dir, exist_ok=True)
-        shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg.png'))
-
-        # Agregar relacion en document.xml.rels
-        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
-        with open(rels_path, 'r', encoding='utf-8') as f:
-            rels = f.read()
-        if 'rIdBg' not in rels:
-            rels = rels.replace('</Relationships>',
-                '<Relationship Id="rIdBg" '
-                'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
-                'Target="media/bg.png"/></Relationships>')
-            with open(rels_path, 'w', encoding='utf-8') as f:
-                f.write(rels)
-
-        # Agregar background en document.xml
-        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
-        with open(doc_path, 'r', encoding='utf-8') as f:
-            doc_xml = f.read()
-        bg_xml = (
-            '<w:background w:color="FFFFFF" '
-            'xmlns:v="urn:schemas-microsoft-com:vml" '
-            'xmlns:o="urn:schemas-microsoft-com:office:office" '
-            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            '<v:background id="_x0000_s1025" o:bwmode="white">'
-            '<v:fill r:id="rIdBg" o:title="bg" type="frame"/>'
-            '</v:background></w:background>'
-        )
-        if '<w:background' not in doc_xml:
-            doc_xml = doc_xml.replace('<w:body>', bg_xml + '<w:body>', 1)
-            with open(doc_path, 'w', encoding='utf-8') as f:
-                f.write(doc_xml)
-
-        # Activar displayBackgroundShape en settings.xml
-        settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
-        if os.path.exists(settings_path):
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = f.read()
-            if 'displayBackgroundShape' not in settings:
-                settings = settings.replace('</w:settings>',
-                    '<w:displayBackgroundShape/></w:settings>')
-                with open(settings_path, 'w', encoding='utf-8') as f:
-                    f.write(settings)
-
-        # Reempaquetar preservando tipos MIME originales
-        new_path = os.path.join(tmpdir, 'final.docx')
-        with zipfile.ZipFile(tmp_path, 'r') as orig_zip:
-            orig_names = {i.filename: i for i in orig_zip.infolist()}
-        with zipfile.ZipFile(new_path, 'w', zipfile.ZIP_DEFLATED) as zout:
-            for root, dirs, files in os.walk(extract_dir):
-                for file in files:
-                    fp = os.path.join(root, file)
-                    arcname = os.path.relpath(fp, extract_dir)
-                    zout.write(fp, arcname)
-
-        with open(new_path, 'rb') as f:
-            return f.read()
-
+def generar_docx_con_observaciones(data, observaciones_extra):
+    doc = DocxDocument()
+    seccion = doc.sections[0]
+    seccion.page_height = Cm(29.7)
+    seccion.page_width = Cm(21.0)
+    seccion.top_margin = Cm(3.2)
+    seccion.bottom_margin = Cm(2.8)
+    seccion.left_margin = Cm(1.4)
+    seccion.right_margin = Cm(1.4)
+    AZUL = RGBColor(0x1A, 0x1A, 0x2E)
+    GRIS = RGBColor(0x6B, 0x72, 0x80)
+    VERDE = RGBColor(0x16, 0xA3, 0x4A)
+    ROJO = RGBColor(0xC0, 0x39, 0x2B)
+    LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
+    hdr = doc.sections[0].header
+    ph = hdr.paragraphs[0]
+    ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if LOGO.exists():
+        ph.add_run().add_picture(str(LOGO), width=Cm(8))
+    ftr = doc.sections[0].footer
+    pf = ftr.paragraphs[0]
+    pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    rf = pf.add_run("CHG Ascensores | comercial@chgascensor.com | (01) 627-9422 | Av. La Encalada N110 - Surco")
+    rf.font.size = Pt(7)
+    rf.font.color.rgb = GRIS
+    meta = data.get("meta", {})
+    secciones = data.get("secciones", [])
+    fotos = data.get("fotos", [])
+    obs = data.get("observaciones", {})
+    firma = data.get("firma", {})
+    pt = doc.add_paragraph()
+    pt.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    rt = pt.add_run(meta.get("titulo", "INFORME DE MANTENIMIENTO"))
+    rt.bold = True
+    rt.font.size = Pt(14)
+    rt.font.color.rgb = AZUL
+    doc.add_paragraph()
+    tabla = doc.add_table(rows=0, cols=4)
+    tabla.style = "Table Grid"
+    def add_meta_row(t, l1, v1, l2, v2):
+        fila = t.add_row()
+        for ci, txt, bold in [(0,l1,True),(1,v1,False),(2,l2,True),(3,v2,False)]:
+            p = fila.cells[ci].paragraphs[0]
+            r = p.add_run(str(txt) if txt else "-")
+            r.bold = bold
+            r.font.size = Pt(9)
+            if bold:
+                r.font.color.rgb = GRIS
+    add_meta_row(tabla, "ESTADO", meta.get("estado","-"), "FECHA VENCIMIENTO", meta.get("fecha_vencimiento","-"))
+    add_meta_row(tabla, "TIEMPO EST.", meta.get("tiempo_estimado","-"), "TIPO TRABAJO", meta.get("tipo_trabajo","-"))
+    add_meta_row(tabla, "ASIGNADOS", ", ".join(meta.get("asignados",[])) or "-", "CATEGORIAS", ", ".join(meta.get("categorias",[])) or "-")
+    add_meta_row(tabla, "UBICACION", meta.get("ubicacion","-"), "ACTIVO", meta.get("activo","-"))
+    add_meta_row(tabla, "INGRESO", meta.get("fecha_hora_ingreso","-"), "CAMPOS", meta.get("campos_completados","-"))
+    doc.add_paragraph()
+    if meta.get("procedimiento"):
+        pp = doc.add_paragraph(meta["procedimiento"])
+        pp.runs[0].bold = True
+        pp.runs[0].font.size = Pt(11)
+        pp.runs[0].font.color.rgb = AZUL
+        doc.add_paragraph()
+    for sec in secciones:
+        ps = doc.add_paragraph(sec["nombre"])
+        ps.runs[0].bold = True
+        ps.runs[0].font.size = Pt(10)
+        ps.runs[0].font.color.rgb = AZUL
+        ts = doc.add_table(rows=0, cols=2)
+        ts.style = "Table Grid"
+        for campo in sec.get("campos", []):
+            e = campo.get("etiqueta", "")
+            v = campo.get("valor", "-")
+            fila = ts.add_row()
+            fila.cells[0].width = Cm(9)
+            fila.cells[1].width = Cm(7)
+            fila.cells[0].paragraphs[0].add_run(e).font.size = Pt(9)
+            rv = fila.cells[1].paragraphs[0].add_run(str(v))
+            rv.font.size = Pt(9)
+            if v == "Malo":
+                rv.font.color.rgb = ROJO
+            elif v == "Bueno":
+                rv.font.color.rgb = VERDE
+        doc.add_paragraph()
+    if obs.get("evaluacion_final") or obs.get("para_cliente"):
+        po = doc.add_paragraph("OBSERVACIONES Y RECOMENDACIONES")
+        po.runs[0].bold = True
+        po.runs[0].font.size = Pt(11)
+        po.runs[0].font.color.rgb = AZUL
+        to = doc.add_table(rows=0, cols=2)
+        to.style = "Table Grid"
+        if obs.get("evaluacion_final"):
+            fila = to.add_row()
+            fila.cells[0].paragraphs[0].add_run("Evaluacion final:").font.size = Pt(9)
+            fila.cells[1].paragraphs[0].add_run(obs["evaluacion_final"]).font.size = Pt(9)
+        if obs.get("para_cliente"):
+            fila = to.add_row()
+            fila.cells[0].paragraphs[0].add_run("Para cliente:").font.size = Pt(9)
+            fila.cells[1].paragraphs[0].add_run(obs["para_cliente"]).font.size = Pt(9)
+        if obs.get("para_chg") and obs["para_chg"] != "-":
+            fila = to.add_row()
+            fila.cells[0].paragraphs[0].add_run("Para CHG:").font.size = Pt(9)
+            fila.cells[1].paragraphs[0].add_run(obs["para_chg"]).font.size = Pt(9)
+        doc.add_paragraph()
+    if firma.get("texto"):
+        pfi = doc.add_paragraph("FIRMA DEL CLIENTE")
+        pfi.runs[0].bold = True
+        pfi.runs[0].font.size = Pt(10)
+        pfi.runs[0].font.color.rgb = AZUL
+        if firma.get("data_base64"):
+            import base64, io as _io
+            img_bytes = base64.b64decode(firma["data_base64"])
+            doc.add_picture(_io.BytesIO(img_bytes), width=Cm(5))
+        pft = doc.add_paragraph(firma["texto"])
+        pft.runs[0].font.size = Pt(9)
+        pft.runs[0].italic = True
+        if meta.get("fecha_hora_salida"):
+            ps2 = doc.add_paragraph("Fecha y Hora de salida: " + meta["fecha_hora_salida"])
+            ps2.runs[0].font.size = Pt(9)
+        doc.add_paragraph()
+    if observaciones_extra:
+        poe = doc.add_paragraph("OBSERVACIONES ADICIONALES")
+        poe.runs[0].bold = True
+        poe.runs[0].font.size = Pt(11)
+        poe.runs[0].font.color.rgb = ROJO
+        pob = doc.add_paragraph(observaciones_extra)
+        pob.runs[0].font.size = Pt(10)
+        pob.runs[0].italic = True
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
 
 UI = """<!DOCTYPE html>
 <html lang="es">
@@ -1196,6 +720,8 @@ UI = """<!DOCTYPE html>
 </html>"""
 
 @app.route("/")
+
+
 def index():
     return render_template_string(UI)
 
