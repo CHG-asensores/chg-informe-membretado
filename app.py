@@ -14,6 +14,12 @@ import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF para overlay del membrete
+from docx import Document as DocxDocument
+from docx.shared import Pt, RGBColor, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+import datetime
 from flask import Flask, jsonify, render_template_string, request, send_file
 from playwright.sync_api import sync_playwright
 
@@ -68,6 +74,105 @@ def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
     src.close()
     return out
 
+
+def generar_docx_con_observaciones(data: dict, observaciones: str) -> bytes:
+            doc = DocxDocument()
+                seccion = doc.sections[0]
+                    seccion.page_height = Cm(29.7)
+                        seccion.page_width = Cm(21.0)
+                            seccion.top_margin = Cm(2.5)
+                                seccion.bottom_margin = Cm(2.5)
+                                    seccion.left_margin = Cm(2.5)
+                                        seccion.right_margin = Cm(2.5)
+                                            AZUL = RGBColor(0x1A, 0x1A, 0x2E)
+                                            
+    def linea_h(p):
+                        pPr = p._p.get_or_add_pPr()
+                                pBdr = OxmlElement("w:pBdr")
+                                        b = OxmlElement("w:bottom")
+                                                b.set(qn("w:val"), "single")
+                                                        b.set(qn("w:sz"), "6")
+                                                                b.set(qn("w:space"), "1")
+                                                                        b.set(qn("w:color"), "1A1A2E")
+                                                                                pBdr.append(b)
+                                                                                        pPr.append(pBdr)
+                                                                                        
+    LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
+        hdr = doc.sections[0].header
+            ph = hdr.paragraphs[0]
+                ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    if LOGO.exists():
+                                        ph.add_run().add_picture(str(LOGO), width=Cm(14))
+                                            else:
+                                                                rh = ph.add_run("CHG Ascensores")
+                                                                        rh.bold = True
+                                                                                rh.font.size = Pt(14)
+                                                                                        rh.font.color.rgb = AZUL
+                                                                                        
+    pt = doc.add_paragraph()
+        pt.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            rt = pt.add_run("INFORME DE MANTENIMIENTO")
+                rt.bold = True
+                    rt.font.size = Pt(16)
+                        rt.font.color.rgb = AZUL
+                            linea_h(doc.add_paragraph())
+                            
+    meta = data.get("meta", {})
+        doc.add_paragraph()
+            ps = doc.add_paragraph("DATOS GENERALES")
+                ps.runs[0].bold = True
+                    ps.runs[0].font.color.rgb = AZUL
+                        tabla = doc.add_table(rows=0, cols=2)
+                            tabla.style = "Table Grid"
+                                for etiq, val in [
+                                        ("N de Orden", "#" + str(meta.get("numero_orden", "-"))),
+                                                ("Estado", meta.get("estado", "-")),
+                                                        ("Ubicacion", meta.get("ubicacion", "-")),
+                                                                ("Activo", meta.get("activo", "-")),
+                                                                        ("Asignados", ", ".join(meta.get("asignados", [])) or "-"),
+                                                                                ("Fecha", meta.get("fecha") or datetime.date.today().strftime("%d/%m/%Y")),
+                                                                                    ]:
+                                                                                                        fila = tabla.add_row()
+                                                                                                                fila.cells[0].width = Cm(5)
+                                                                                                                        fila.cells[1].width = Cm(11)
+                                                                                                                                rl = fila.cells[0].paragraphs[0].add_run(etiq)
+                                                                                                                                        rl.bold = True
+                                                                                                                                                rl.font.size = Pt(10)
+                                                                                                                                                        fila.cells[1].paragraphs[0].add_run(str(val)).font.size = Pt(10)
+                                                                                                                                                        
+    doc.add_paragraph()
+        campos_form = data.get("campos", [])
+            if campos_form:
+                                pc = doc.add_paragraph("TAREAS REALIZADAS")
+                                        pc.runs[0].bold = True
+                                                pc.runs[0].font.color.rgb = AZUL
+                                                        for campo in campos_form:
+                                                                                e = campo.get("etiqueta", "")
+                                                                                            v = campo.get("valor", "")
+                                                                                                        if e:
+                                                                                                                                    p = doc.add_paragraph(style="List Bullet")
+                                                                                                                                                    re2 = p.add_run(e + ": ")
+                                                                                                                                                                    re2.bold = True
+                                                                                                                                                                                    re2.font.size = Pt(10)
+                                                                                                                                                                                                    p.add_run(str(v)).font.size = Pt(10)
+                                                                                                                                                                                                            doc.add_paragraph()
+                                                                                                                                                                                                            
+    if observaciones:
+                        linea_h(doc.add_paragraph())
+                                po = doc.add_paragraph("OBSERVACIONES Y RECOMENDACIONES")
+                                        ro = po.runs[0]
+                                                ro.bold = True
+                                                        ro.font.size = Pt(11)
+                                                                ro.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+                                                                        pb = doc.add_paragraph(observaciones)
+                                                                                pb.runs[0].font.size = Pt(10)
+                                                                                        doc.add_paragraph()
+                                                                                        
+    buf = io.BytesIO()
+        doc.save(buf)
+            buf.seek(0)
+                return buf.read()
+                
 # ─── HTML de la interfaz ──────────────────────────────────────────────────────
 UI = """<!DOCTYPE html>
 <html lang="es">
@@ -425,6 +530,7 @@ UI = """<!DOCTYPE html>
   const valList       = document.getElementById('valList');
   const btnDownload   = document.getElementById('btnDownload');
   const btnReset      = document.getElementById('btnReset');
+  const btnGenerateWord = document.getElementById('btnGenerateWord');
 
   let selectedFile = null;
 
@@ -445,6 +551,7 @@ UI = """<!DOCTYPE html>
     fileInfo.classList.add('show');
     dropZone.style.display = 'none';
     btnGenerate.disabled = false;
+    document.getElementById("btnGenerateWord").disabled = false;
     resetResult();
   }
 
@@ -454,6 +561,7 @@ UI = """<!DOCTYPE html>
     fileInfo.classList.remove('show');
     dropZone.style.display = '';
     btnGenerate.disabled = true;
+    document.getElementById("btnGenerateWord").disabled = true;
     resetResult();
   }
 
@@ -535,6 +643,31 @@ UI = """<!DOCTYPE html>
     resetFile();
   });
 
+  btnGenerateWord.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    showLoading();
+    btnGenerateWord.disabled = true;
+    const form = new FormData();
+    form.append('pdf', selectedFile);
+    form.append('observaciones', document.getElementById('observaciones').value.trim());
+    try {
+      const resp = await fetch('/generate-word', { method: 'POST', body: form });
+      if (!resp.ok) { const d = await resp.json(); showResult(d); return; }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = selectedFile.name.replace('.pdf','') + '_observaciones.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+      showResult({ok: true, meta: {}, warning: false});
+    } catch(err) {
+      showResult({error: 'Error: ' + err.message});
+    } finally {
+      btnGenerateWord.disabled = false;
+    }
+  });
+
   btnGenerate.addEventListener('click', async () => {
     if (!selectedFile) return;
     showLoading();
@@ -571,6 +704,7 @@ def generate():
         return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
 
     pdf_bytes = request.files["pdf"].read()
+    observaciones = request.form.get("observaciones", "").strip()
     if not pdf_bytes:
         return jsonify({"error": "El archivo está vacío."}), 400
 
@@ -622,6 +756,32 @@ def generate():
 
 
 _pdf_store: dict = {}
+
+@app.route("/generate-word", methods=["POST"])
+def generate_word():
+        if "pdf" not in request.files:
+                        return jsonify({"error": "No se recibio PDF"}), 400
+                            pdf_bytes = request.files["pdf"].read()
+                                observaciones = request.form.get("observaciones", "").strip()
+                                    if not pdf_bytes:
+                                                    return jsonify({"error": "Archivo vacio"}), 400
+                                                        try:
+                                                                        data = parse_pdf(pdf_bytes)
+                                                                            except Exception as exc:
+                                                                                            return jsonify({"error": f"Error al parsear: {exc}"}), 422
+                                                                                                try:
+                                                                                                                docx_bytes = generar_docx_con_observaciones(data, observaciones)
+                                                                                                                    except Exception as exc:
+                                                                                                                                    return jsonify({"error": f"Error al generar Word: {exc}"}), 500
+                                                                                                                                        numero = data.get("meta", {}).get("numero_orden", "informe")
+                                                                                                                                            return send_file(
+                                                                                                                                                    io.BytesIO(docx_bytes),
+                                                                                                                                                            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                                                                                                                                                    as_attachment=True,
+                                                                                                                                                                            download_name=f"informe-{numero}-observaciones.docx"
+                                                                                                                                                                                )
+                                                                                                                                                                                
+
 
 
 @app.route("/download/<file_id>")
