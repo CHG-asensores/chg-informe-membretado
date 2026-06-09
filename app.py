@@ -146,10 +146,116 @@ def remove_all_borders(table):
                             top={"val": "nil"}, bottom={"val": "nil"}, 
                             left={"val": "nil"}, right={"val": "nil"})
 
+import io
+import base64
+import re
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
+def set_cell_border(cell, **kwargs):
+    """Manipula el XML para aplicar bordes finos estilo web."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcBorders = tcPr.first_child_found_in("w:tcBorders")
+    if tcBorders is None:
+        tcBorders = OxmlElement('w:tcBorders')
+        tcPr.append(tcBorders)
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        edge_data = kwargs.get(edge)
+        if edge_data:
+            tag = 'w:{}'.format(edge)
+            element = tcBorders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tcBorders.append(element)
+            for key, val in edge_data.items():
+                element.set(qn('w:{}'.format(key)), str(val))
+
+def set_cell_margins(cell, top=50, bottom=50, start=100, end=100):
+    """Agrega padding interno a las celdas para que no se vean apretadas."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcMar = OxmlElement('w:tcMar')
+    for margin, value in [('top', top), ('bottom', bottom), ('left', start), ('right', end)]:
+        node = OxmlElement(f'w:{margin}')
+        node.set(qn('w:w'), str(value))
+        node.set(qn('w:type'), 'dxa')
+        tcMar.append(node)
+    tcPr.append(tcMar)
+
+def remove_all_borders(table):
+    for row in table.rows:
+        for cell in row.cells:
+            set_cell_border(cell, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
+            set_cell_margins(cell, top=80, bottom=80, start=0, end=0)
+
+def limpiar_texto(texto):
+    """Limpia caracteres basura (☑, V) que arrastra el OCR de los PDFs."""
+    if not texto: return "-"
+    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
+    return limpio if limpio else "-"
+
+import io
+import base64
+import re
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
+def set_cell_border(cell, **kwargs):
+    """Manipula el XML para aplicar bordes finos estilo web."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcBorders = tcPr.first_child_found_in("w:tcBorders")
+    if tcBorders is None:
+        tcBorders = OxmlElement('w:tcBorders')
+        tcPr.append(tcBorders)
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        edge_data = kwargs.get(edge)
+        if edge_data:
+            tag = 'w:{}'.format(edge)
+            element = tcBorders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tcBorders.append(element)
+            for key, val in edge_data.items():
+                element.set(qn('w:{}'.format(key)), str(val))
+
+def set_cell_margins(cell, top=50, bottom=50, start=100, end=100):
+    """Agrega padding interno a las celdas para que no se vean apretadas."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcMar = OxmlElement('w:tcMar')
+    for margin, value in [('top', top), ('bottom', bottom), ('left', start), ('right', end)]:
+        node = OxmlElement(f'w:{margin}')
+        node.set(qn('w:w'), str(value))
+        node.set(qn('w:type'), 'dxa')
+        tcMar.append(node)
+    tcPr.append(tcMar)
+
+def remove_all_borders(table):
+    for row in table.rows:
+        for cell in row.cells:
+            set_cell_border(cell, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
+            set_cell_margins(cell, top=80, bottom=80, start=0, end=0)
+
+def limpiar_texto(texto):
+    """Limpia caracteres basura (☑, V) que arrastra el OCR de los PDFs."""
+    if not texto: return "-"
+    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
+    return limpio if limpio else "-"
+
 def generar_docx_con_observaciones(data, observaciones_extra):
     doc = Document()
     
-    # Configuración de márgenes y tamaño (A4)
+    # Configuración de márgenes estilo PDF (A4)
     seccion = doc.sections[0]
     seccion.page_height = Cm(29.7)
     seccion.page_width = Cm(21.0)
@@ -158,28 +264,28 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     seccion.left_margin = Cm(1.5)
     seccion.right_margin = Cm(1.5)
     
-    # Colores exactos
+    # Paleta de colores corporativos
     AZUL_TITULO = RGBColor(0x1B, 0x36, 0x5D)
     GRIS_ETIQUETA = RGBColor(0x6B, 0x72, 0x80)
     NEGRO_VALOR = RGBColor(0x11, 0x18, 0x27)
-    VERDE_OK = RGBColor(0x16, 0xA3, 0x4A)
-    ROJO_MAL = RGBColor(0xDC, 0x26, 0x26)
-    GRIS_LINEA = {"val": "single", "sz": "2", "color": "E5E7EB"} # Borde inferior sutil
+    VERDE_OK = RGBColor(0x2E, 0x7D, 0x32)
+    ROJO_MAL = RGBColor(0xC6, 0x28, 0x28)
+    GRIS_LINEA = {"val": "single", "sz": "2", "color": "E5E7EB"} 
 
-    # Estilos por defecto
+    # Cambiar fuente base a Arial
     style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Arial' # Lo más parecido al PDF estándar
-    font.size = Pt(10)
+    style.font.name = 'Arial'
+    style.font.size = Pt(10)
 
-    # Encabezado Membretado
+    # 1. ENCABEZADO Y LOGO
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
-
+    
     hdr = seccion.header
     ph = hdr.paragraphs[0]
     ph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    
     if LOGO.exists():
-        ph.add_run().add_picture(str(LOGO), width=Cm(4))
+        ph.add_run().add_picture(str(LOGO), width=Cm(4.5))
 
     # Extracción de datos
     meta = data.get("meta", {})
@@ -188,51 +294,43 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     obs = data.get("observaciones", {})
     firma = data.get("firma", {})
 
-    # Título principal (Ej: M. Preventivo EDIF. SAN BORJA NORTE #488)
+    # Título principal
     p_titulo = doc.add_paragraph()
-    p_titulo.paragraph_format.space_after = Pt(2)
-    r_titulo = p_titulo.add_run(meta.get("titulo", "INFORME DE MANTENIMIENTO"))
+    p_titulo.paragraph_format.space_after = Pt(6)
+    r_titulo = p_titulo.add_run(limpiar_texto(meta.get("titulo", "INFORME DE MANTENIMIENTO")))
     r_titulo.bold = True
-    r_titulo.font.size = Pt(14)
+    r_titulo.font.size = Pt(13)
     r_titulo.font.color.rgb = AZUL_TITULO
 
-    doc.add_paragraph() # Espacio
-
-    # --- TABLA DE METADATOS (Estilo MaintainX) ---
+    # 2. TABLA DE METADATOS (Estilo Bloque)
     tabla_meta = doc.add_table(rows=4, cols=4)
     tabla_meta.autofit = False
     
-    # Anchos para simular el formulario
     for row in tabla_meta.rows:
         row.cells[0].width = Cm(4.0)
         row.cells[1].width = Cm(5.0)
         row.cells[2].width = Cm(4.5)
         row.cells[3].width = Cm(4.5)
 
-    def fill_meta_cell(cell, etiqueta, valor, is_checkbox=False):
+    def fill_meta_cell(cell, etiqueta, valor):
+        set_cell_margins(cell, top=80, bottom=80, start=50, end=50)
         p = cell.paragraphs[0]
-        p.paragraph_format.space_after = Pt(4)
-        p.paragraph_format.line_spacing = 1.0
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.line_spacing = 1.1
         
-        # Etiqueta gris pequeña
         r_etiq = p.add_run(f"{etiqueta.upper()}\n")
         r_etiq.bold = True
         r_etiq.font.size = Pt(7.5)
         r_etiq.font.color.rgb = GRIS_ETIQUETA
         
-        # Valor negro más grande
-        val_str = str(valor) if valor else "-"
-        if is_checkbox and val_str.lower() != "-":
-            r_val = p.add_run(f"☑ {val_str}")
-        else:
-            r_val = p.add_run(val_str)
+        val_str = limpiar_texto(valor)
+        r_val = p.add_run(val_str)
         r_val.font.size = Pt(9.5)
         r_val.font.color.rgb = NEGRO_VALOR
         
-        # Solo borde inferior para separar
         set_cell_border(cell, top={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"}, bottom=GRIS_LINEA)
 
-    fill_meta_cell(tabla_meta.cell(0,0), "ESTADO", meta.get("estado","-"), True)
+    fill_meta_cell(tabla_meta.cell(0,0), "ESTADO", meta.get("estado","-"))
     fill_meta_cell(tabla_meta.cell(0,1), "FECHA DE VENCIMIENTO", meta.get("fecha_vencimiento","-"))
     fill_meta_cell(tabla_meta.cell(0,2), "TIEMPO ESTIMADO", meta.get("tiempo_estimado","-"))
     fill_meta_cell(tabla_meta.cell(0,3), "TIPO DE TRABAJO", meta.get("tipo_trabajo","-"))
@@ -240,7 +338,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     fill_meta_cell(tabla_meta.cell(1,0), "ASIGNADOS", ", ".join(meta.get("asignados",[])) or "-")
     fill_meta_cell(tabla_meta.cell(1,1), "CATEGORÍAS", ", ".join(meta.get("categorias",[])) or "-")
     
-    # Merge para ubicación y activo
     cell_ubi = tabla_meta.cell(2,0)
     cell_ubi.merge(tabla_meta.cell(2,1))
     fill_meta_cell(cell_ubi, "UBICACIÓN", meta.get("ubicacion","-"))
@@ -249,91 +346,77 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     cell_act.merge(tabla_meta.cell(2,3))
     fill_meta_cell(cell_act, "ACTIVO", meta.get("activo","-"))
 
-    # Merge para procedimiento
     cell_proc = tabla_meta.cell(3,0)
     cell_proc.merge(tabla_meta.cell(3,3))
-    proc_val = meta.get("procedimiento", "-")
-    if proc_val != "-":
-        proc_val += "\n☑ INFORME DE MANTENIMIENTO PREVENTIVO"
-    fill_meta_cell(cell_proc, "PROCEDIMIENTO", proc_val)
+    fill_meta_cell(cell_proc, "PROCEDIMIENTO", meta.get("procedimiento", "-") + "\nINFORME DE MANTENIMIENTO PREVENTIVO")
 
     doc.add_paragraph()
 
-    # --- SECCIONES Y CHECKLISTS ---
+    # 3. SECCIONES Y CHECKLISTS
     for sec in secciones:
         ps = doc.add_paragraph()
-        ps.paragraph_format.space_before = Pt(12)
-        ps.paragraph_format.space_after = Pt(4)
-        run_sec = ps.add_run(sec["nombre"])
+        ps.paragraph_format.space_before = Pt(14)
+        ps.paragraph_format.space_after = Pt(6)
+        run_sec = ps.add_run(limpiar_texto(sec["nombre"]).upper())
         run_sec.bold = True
-        run_sec.font.size = Pt(11)
+        run_sec.font.size = Pt(10.5)
         run_sec.font.color.rgb = AZUL_TITULO
         
-        # Tabla sin bordes para alinear Etiquetas y Valores
         ts = doc.add_table(rows=0, cols=2)
         remove_all_borders(ts)
         
         for campo in sec.get("campos", []):
-            e = campo.get("etiqueta", "")
-            v = campo.get("valor", "-")
+            e = limpiar_texto(campo.get("etiqueta", ""))
+            v = limpiar_texto(campo.get("valor", "-"))
             
             fila = ts.add_row()
             fila.cells[0].width = Cm(10)
             fila.cells[1].width = Cm(8)
             
             p_etiq = fila.cells[0].paragraphs[0]
-            p_etiq.paragraph_format.space_after = Pt(2)
-            r_e = p_etiq.add_run(f"{e}:")
+            p_etiq.paragraph_format.space_after = Pt(0)
+            etiqueta_texto = e if e.endswith(":") else f"{e}:"
+            r_e = p_etiq.add_run(etiqueta_texto)
             r_e.font.size = Pt(9.5)
             r_e.font.color.rgb = NEGRO_VALOR
             
             p_val = fila.cells[1].paragraphs[0]
-            p_val.paragraph_format.space_after = Pt(2)
-            
-            r_chk = p_val.add_run("☑ ")
-            r_chk.font.size = Pt(10)
-            r_v = p_val.add_run(str(v))
+            p_val.paragraph_format.space_after = Pt(0)
+            r_v = p_val.add_run(v)
             r_v.font.size = Pt(9.5)
             r_v.bold = True
             
-            # Asignar color al texto del valor
-            if v == "Bueno":
+            if v.lower() == "bueno":
                 r_v.font.color.rgb = VERDE_OK
-                r_chk.font.color.rgb = VERDE_OK
-            elif v == "Malo":
+            elif v.lower() == "malo":
                 r_v.font.color.rgb = ROJO_MAL
-                r_chk.font.color.rgb = ROJO_MAL
             else:
                 r_v.font.color.rgb = GRIS_ETIQUETA
-                r_chk.font.color.rgb = GRIS_ETIQUETA
                 
-            # Línea divisoria inferior finita en la tabla
             set_cell_border(fila.cells[0], bottom=GRIS_LINEA)
             set_cell_border(fila.cells[1], bottom=GRIS_LINEA)
 
-    # --- OBSERVACIONES Y RECOMENDACIONES ---
+    # 4. OBSERVACIONES Y RECOMENDACIONES
     p_obs_title = doc.add_paragraph()
     p_obs_title.paragraph_format.space_before = Pt(18)
+    p_obs_title.paragraph_format.space_after = Pt(6)
     r_obs_title = p_obs_title.add_run("Observaciones y Recomendaciones")
     r_obs_title.bold = True
-    r_obs_title.font.size = Pt(12)
+    r_obs_title.font.size = Pt(11)
     r_obs_title.font.color.rgb = AZUL_TITULO
 
-    # Juntar todas las observaciones
     todas_observaciones = []
-    if obs.get("para_cliente"):
-        todas_observaciones.append(obs["para_cliente"])
-    if obs.get("para_chg") and obs["para_chg"] != "-":
-        todas_observaciones.append(f"Para CHG: {obs['para_chg']}")
+    if obs.get("para_cliente"): todas_observaciones.append(limpiar_texto(obs["para_cliente"]))
+    if obs.get("para_chg") and obs["para_chg"] != "-": todas_observaciones.append(f"Para CHG: {limpiar_texto(obs['para_chg'])}")
         
     if isinstance(observaciones_extra, list):
-        todas_observaciones.extend(observaciones_extra)
+        todas_observaciones.extend([limpiar_texto(o) for o in observaciones_extra])
     elif isinstance(observaciones_extra, str) and observaciones_extra:
-        todas_observaciones.append(observaciones_extra)
+        todas_observaciones.append(limpiar_texto(observaciones_extra))
 
     for observacion in todas_observaciones:
-        p_item = doc.add_paragraph(observacion) # Sin viñeta para que se vea como en el PDF
-        p_item.paragraph_format.left_indent = Cm(0.5)
+        p_item = doc.add_paragraph(observacion)
+        p_item.paragraph_format.space_after = Pt(4)
         p_item.runs[0].font.size = Pt(9.5)
         p_item.runs[0].font.color.rgb = NEGRO_VALOR
         
@@ -343,10 +426,10 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         r_et_ev = p_eval.add_run("Evaluación final: ")
         r_et_ev.bold = True
         r_et_ev.font.color.rgb = GRIS_ETIQUETA
-        r_ev = p_eval.add_run(obs["evaluacion_final"])
+        r_ev = p_eval.add_run(limpiar_texto(obs["evaluacion_final"]))
         r_ev.bold = True
 
-    # --- FIRMA ---
+    # 5. FIRMA
     doc.add_paragraph()
     pfi = doc.add_paragraph()
     run_firma = pfi.add_run("Firma del cliente:")
@@ -359,25 +442,25 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             img_bytes = base64.b64decode(firma["data_base64"])
             p_img = doc.add_paragraph()
             p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(6))
-        except:
+        except Exception: 
             pass
             
     if firma.get("texto"):
-        pft = doc.add_paragraph(firma["texto"])
+        pft = doc.add_paragraph(limpiar_texto(firma["texto"]))
         pft.runs[0].font.size = Pt(8.5)
         pft.runs[0].font.color.rgb = GRIS_ETIQUETA
 
     if meta.get("fecha_hora_salida"):
-        ps2 = doc.add_paragraph(f"Fecha y Hora de salida: {meta['fecha_hora_salida']}")
+        ps2 = doc.add_paragraph(f"Fecha y Hora de salida: {limpiar_texto(meta['fecha_hora_salida'])}")
         ps2.runs[0].font.size = Pt(8.5)
         ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
 
-    # --- FOTOGRAFÍAS (Saltos de página por foto como en el PDF) ---
+    # 6. FOTOGRAFÍAS
     if fotos:
         for foto in fotos:
             doc.add_page_break()
             p_foto_title = doc.add_paragraph()
-            r_ft_title = p_foto_title.add_run(foto.get("titulo", "Fotografía:"))
+            r_ft_title = p_foto_title.add_run(limpiar_texto(foto.get("titulo", "Fotografía:")))
             r_ft_title.bold = True
             r_ft_title.font.size = Pt(11)
             r_ft_title.font.color.rgb = AZUL_TITULO
@@ -387,8 +470,8 @@ def generar_docx_con_observaciones(data, observaciones_extra):
                     img_bytes = base64.b64decode(foto["data_base64"])
                     p_img = doc.add_paragraph()
                     p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(16)) # Más grande, simulando la página completa
-                except Exception as e:
+                    p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(16))
+                except Exception: 
                     pass
 
     buf = io.BytesIO()
