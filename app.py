@@ -435,9 +435,14 @@ UI = """<!DOCTYPE html>
       <button class="remove-btn" id="removeBtn" title="Quitar archivo">✕</button>
     </div>
 
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
       Generar informe membretado
+    </button>
+    <button class="btn-generate" id="btnGenerateWord" disabled style="background:#1d6f42;margin-top:4px;">
+      <span>📄</span>
+      Generar Word con observaciones
     </button>
   </div>
 
@@ -518,6 +523,7 @@ UI = """<!DOCTYPE html>
     fileInfo.classList.add('show');
     dropZone.style.display = 'none';
     btnGenerate.disabled = false;
+    document.getElementById("btnGenerateWord").disabled = false;
     resetResult();
   }
 
@@ -527,6 +533,7 @@ UI = """<!DOCTYPE html>
     fileInfo.classList.remove('show');
     dropZone.style.display = '';
     btnGenerate.disabled = true;
+    document.getElementById("btnGenerateWord").disabled = true;
     resetResult();
   }
 
@@ -615,6 +622,7 @@ UI = """<!DOCTYPE html>
 
     const form = new FormData();
     form.append('pdf', selectedFile);
+    form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
       const resp = await fetch('/generate', { method: 'POST', body: form });
@@ -644,6 +652,7 @@ def generate():
         return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
 
     pdf_bytes = request.files["pdf"].read()
+    observaciones = request.form.get("observaciones", "").strip()
     if not pdf_bytes:
         return jsonify({"error": "El archivo está vacío."}), 400
 
@@ -695,6 +704,25 @@ def generate():
 
 
 _pdf_store: dict = {}
+@app.route('/generate-word', methods=['POST'])
+def generate_word():
+    if 'pdf' not in request.files:
+        return jsonify({'error': 'No se recibio PDF'}), 400
+    pdf_bytes = request.files['pdf'].read()
+    observaciones = request.form.get('observaciones', '').strip()
+    if not pdf_bytes:
+        return jsonify({'error': 'Archivo vacio'}), 400
+    try:
+        data = parse_pdf(pdf_bytes)
+    except Exception as exc:
+        return jsonify({'error': f'Error al parsear: {exc}'}), 422
+    try:
+        docx_bytes = generar_docx_con_observaciones(data, observaciones)
+    except Exception as exc:
+        return jsonify({'error': f'Error al generar Word: {exc}'}), 500
+    numero = data.get('meta', {}).get('numero_orden', 'informe')
+    return send_file(io.BytesIO(docx_bytes), mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document', as_attachment=True, download_name=f'informe-{numero}-observaciones.docx')
+
 
 
 @app.route("/download/<file_id>")
