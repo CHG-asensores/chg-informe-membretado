@@ -85,70 +85,78 @@ import shutil
 import tempfile
 from docx import Document
 import os
+import io, base64, re, zipfile, shutil, os, tempfile
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
+    """Inserta imagen como fondo de página completa manipulando el ZIP (sin lxml)."""
     if not os.path.exists(ruta_imagen_png):
         return docx_bytes
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = os.path.join(tmpdir, 'temp.docx')
-        with open(tmp_path, 'wb') as f:
+        tmp_docx_path = os.path.join(tmpdir, 'temp.docx')
+        with open(tmp_docx_path, 'wb') as f:
             f.write(docx_bytes)
-
+        
         extract_dir = os.path.join(tmpdir, 'extracted')
-        with zipfile.ZipFile(tmp_path, 'r') as z:
-            z.extractall(extract_dir)
-
+        with zipfile.ZipFile(tmp_docx_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+            
+        # 1. Copiar imagen a word/media/
         media_dir = os.path.join(extract_dir, 'word', 'media')
         os.makedirs(media_dir, exist_ok=True)
         shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg.png'))
-
+        
+        # 2. Agregar relación en document.xml.rels con string replace
         rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
         with open(rels_path, 'r', encoding='utf-8') as f:
-            rels = f.read()
-        if 'rIdBg' not in rels:
-            rels = rels.replace('</Relationships>',
-                '<Relationship Id="rIdBg" '
-                'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
-                'Target="media/bg.png"/></Relationships>')
+            rels_data = f.read()
+        
+        rel_str = '<Relationship Id="rIdBgWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/bg.png"/>'
+        if 'rIdBgWatermark' not in rels_data:
+            rels_data = rels_data.replace('</Relationships>', f'{rel_str}</Relationships>')
             with open(rels_path, 'w', encoding='utf-8') as f:
-                f.write(rels)
-
+                f.write(rels_data)
+        
+        # 3. Agregar <w:background> en document.xml con string replace
         doc_path = os.path.join(extract_dir, 'word', 'document.xml')
         with open(doc_path, 'r', encoding='utf-8') as f:
-            doc_xml = f.read()
-        bg_xml = (
-            '<w:background w:color="FFFFFF" '
-            'xmlns:v="urn:schemas-microsoft-com:vml" '
-            'xmlns:o="urn:schemas-microsoft-com:office:office" '
-            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            '<v:background id="_x0000_s1025" o:bwmode="white">'
-            '<v:fill r:id="rIdBg" o:title="bg" type="frame"/>'
-            '</v:background></w:background>'
-        )
-        if '<w:background' not in doc_xml:
-            doc_xml = doc_xml.replace('<w:body>', bg_xml + '<w:body>', 1)
+            doc_data = f.read()
+            
+        if 'xmlns:v="urn:schemas-microsoft-com:vml"' not in doc_data:
+            doc_data = doc_data.replace('<w:document ', '<w:document xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" ')
+            
+        if '<w:background' not in doc_data:
+            bg_str = '<w:background w:color="FFFFFF"><v:background id="_x0000_s1025" o:bwmode="white" o:targetscreensize="1024,768"><v:fill r:id="rIdBgWatermark" o:title="Fondo" type="frame"/></v:background></w:background>'
+            doc_data = doc_data.replace('<w:body>', f'{bg_str}<w:body>')
             with open(doc_path, 'w', encoding='utf-8') as f:
-                f.write(doc_xml)
+                f.write(doc_data)
 
+        # 4. Activar displayBackgroundShape en settings.xml con string replace
         settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
         if os.path.exists(settings_path):
             with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = f.read()
-            if 'displayBackgroundShape' not in settings:
-                settings = settings.replace('</w:settings>',
-                    '<w:displayBackgroundShape/></w:settings>')
+                set_data = f.read()
+            if '<w:displayBackgroundShape' not in set_data:
+                set_data = set_data.replace('</w:settings>', '<w:displayBackgroundShape/></w:settings>')
                 with open(settings_path, 'w', encoding='utf-8') as f:
-                    f.write(settings)
-
-        new_path = os.path.join(tmpdir, 'final.docx')
-        with zipfile.ZipFile(new_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+                    f.write(set_data)
+        
+        # 5. Reempaquetar ZIP
+        final_docx_path = os.path.join(tmpdir, 'final.docx')
+        with zipfile.ZipFile(final_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(extract_dir):
                 for file in files:
-                    fp = os.path.join(root, file)
-                    arcname = os.path.relpath(fp, extract_dir)
-                    zout.write(fp, arcname)
-
-        with open(new_path, 'rb') as f:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, extract_dir)
+                    zipf.write(file_path, arcname)
+                    
+        with open(final_docx_path, 'rb') as f:
             return f.read()
 
 def set_cell_border(cell, **kwargs):
@@ -185,12 +193,9 @@ def limpiar_texto(texto):
 def generar_docx_con_observaciones(data, observaciones_extra):
     doc = Document()
     
-    # 1. CONFIGURACIÓN DE PÁGINA
     seccion = doc.sections[0]
     seccion.page_height = Cm(29.7)
     seccion.page_width = Cm(21.0)
-    
-    # Márgenes: Libres de encabezado y pie de página, ya que estos vienen en el PNG de fondo
     seccion.top_margin = Cm(4.5)
     seccion.bottom_margin = Cm(3.5)
     seccion.left_margin = Cm(1.5)
@@ -205,39 +210,38 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     style.font.name = 'Arial'
     style.font.size = Pt(9.5)
 
-    # Ruta Base requerida
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
 
-    # 2. EXTRACCIÓN DE DATOS
     meta = data.get("meta", {})
     secciones = data.get("secciones", [])
     fotos = data.get("fotos", [])
     obs = data.get("observaciones", {})
     firma = data.get("firma", {})
 
-    # 3. RECUADRO NEGRO SUPERIOR ("CHG Ascensores")
+    # RECUADRO SUPERIOR (Ajustado a tamaño compacto)
     tbl_top = doc.add_table(rows=1, cols=2)
     tbl_top.autofit = False
-    tbl_top.columns[0].width = Cm(1.5)
-    tbl_top.columns[1].width = Cm(16.5)
+    tbl_top.columns[0].width = Cm(1.2) # Cuadro pequeño
+    tbl_top.columns[1].width = Cm(6.0) # Límite para el texto
     
     cell_box = tbl_top.cell(0, 0)
-    set_cell_bg_color(cell_box, "000000")
+    set_cell_bg_color(cell_box, "111827")
     p_box = cell_box.paragraphs[0]
     p_box.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_box = p_box.add_run(" N ")
+    r_box = p_box.add_run("CHG") # Texto simulando el mini logo
     r_box.font.color.rgb = RGBColor(255, 255, 255)
     r_box.font.bold = True
+    r_box.font.size = Pt(7)
     
     cell_text = tbl_top.cell(0, 1)
     p_text = cell_text.paragraphs[0]
-    r_text = p_text.add_run("   CHG Ascensores")
+    r_text = p_text.add_run("  CHG Ascensores")
     r_text.font.bold = True
-    r_text.font.size = Pt(11)
+    r_text.font.size = Pt(10)
 
     doc.add_paragraph()
 
-    # 4. METADATOS EN COLUMNAS
+    # METADATOS EN COLUMNAS
     tbl_meta = doc.add_table(rows=4, cols=2)
     tbl_meta.autofit = False
     tbl_meta.columns[0].width = Cm(9.0)
@@ -263,13 +267,19 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             p.add_run(f"{icon} {label.upper()}").font.color.rgb = GRIS_ETIQUETA
             p.runs[0].font.size = Pt(7.5)
             
+            # Tabla anidada para controlar el ancho de la caja azul
             t_cat = cell.add_table(rows=1, cols=1)
+            t_cat.autofit = False
             c_cat = t_cat.cell(0, 0)
+            c_cat.width = Cm(4.5) # Límite del cuadro azul
+            
+            # Borde azul más grueso (sz: 12)
             set_cell_border(c_cat, 
-                            top={"val": "single", "sz": "4", "color": "2563EB"},
-                            bottom={"val": "single", "sz": "4", "color": "2563EB"},
-                            left={"val": "single", "sz": "4", "color": "2563EB"},
-                            right={"val": "single", "sz": "4", "color": "2563EB"})
+                            top={"val": "single", "sz": "12", "color": "2563EB"},
+                            bottom={"val": "single", "sz": "12", "color": "2563EB"},
+                            left={"val": "single", "sz": "12", "color": "2563EB"},
+                            right={"val": "single", "sz": "12", "color": "2563EB"})
+            
             p_cat = c_cat.paragraphs[0]
             r_cat = p_cat.add_run(val_clean)
             r_cat.font.color.rgb = AZUL_LINK
@@ -302,7 +312,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     r_p_val.font.color.rgb = AZUL_LINK
     r_p_val.underline = True
 
-    # 5. CHECKLISTS APILADOS
+    # CHECKLISTS APILADOS
     for sec in secciones:
         ps = doc.add_paragraph()
         ps.paragraph_format.space_before = Pt(18)
@@ -336,7 +346,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             r_v.bold = True
             r_v.font.color.rgb = NEGRO_VALOR
 
-    # 6. OBSERVACIONES Y RECOMENDACIONES
+    # OBSERVACIONES Y RECOMENDACIONES
     p_obs_title = doc.add_paragraph()
     p_obs_title.paragraph_format.space_before = Pt(24)
     p_obs_title.paragraph_format.space_after = Pt(6)
@@ -366,7 +376,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         r_ev = p_eval.add_run(limpiar_texto(obs["evaluacion_final"]))
         r_ev.bold = True
 
-    # 7. FIRMA
+    # FIRMA
     doc.add_paragraph()
     pfi = doc.add_paragraph()
     run_firma = pfi.add_run("Firma del cliente:")
@@ -390,7 +400,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         ps2.runs[0].font.size = Pt(8)
         ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
 
-    # 8. FOTOGRAFÍAS
+    # FOTOGRAFÍAS
     if fotos:
         for foto in fotos:
             doc.add_page_break()
@@ -410,9 +420,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
-    docx_bytes = buf.read()
-    
-    return aplicar_fondo_pagina(docx_bytes, str(LOGO))
+    return aplicar_fondo_pagina(buf.read(), str(LOGO))
 
 
 UI = """<!DOCTYPE html>
