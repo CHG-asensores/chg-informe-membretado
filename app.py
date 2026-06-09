@@ -325,6 +325,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     return buf.read()
 
 
+@app.route("/")
 def index():
     return render_template_string(UI)
 
