@@ -14,12 +14,6 @@ import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF para overlay del membrete
-from docx import Document as DocxDocument
-from docx.shared import Pt, RGBColor, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
-import datetime
 from flask import Flask, jsonify, render_template_string, request, send_file
 from playwright.sync_api import sync_playwright
 
@@ -74,110 +68,6 @@ def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
     src.close()
     return out
 
-
-def generar_docx(data: dict, observaciones: str) -> bytes:
-    doc = DocxDocument()
-    seccion = doc.sections[0]
-    seccion.page_height = Cm(29.7)
-    seccion.page_width  = Cm(21.0)
-    seccion.top_margin    = Cm(2.5)
-    seccion.bottom_margin = Cm(2.5)
-    seccion.left_margin   = Cm(2.5)
-    seccion.right_margin  = Cm(2.5)
-    AZUL = RGBColor(0x1A, 0x1A, 0x2E)
-
-    def linea_h(parrafo):
-        p = parrafo._p
-        pPr = p.get_or_add_pPr()
-        pBdr = OxmlElement("w:pBdr")
-        b = OxmlElement("w:bottom")
-        b.set(qn("w:val"), "single")
-        b.set(qn("w:sz"), "6")
-        b.set(qn("w:space"), "1")
-        b.set(qn("w:color"), "1A1A2E")
-        pBdr.append(b)
-        pPr.append(pBdr)
-
-    hdr = doc.sections[0].header
-    ph = hdr.paragraphs[0]
-    ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    rh = ph.add_run("CHG Ascensores - Informe de Mantenimiento")
-    rh.bold = True
-    rh.font.size = Pt(13)
-    rh.font.color.rgb = AZUL
-
-    LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
-    if LOGO.exists():
-        pl = hdr.add_paragraph()
-        pl.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        pl.add_run().add_picture(str(LOGO), width=Cm(14))
-
-    pt = doc.add_paragraph()
-    pt.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    rt = pt.add_run("INFORME DE MANTENIMIENTO")
-    rt.bold = True
-    rt.font.size = Pt(16)
-    rt.font.color.rgb = AZUL
-    linea_h(doc.add_paragraph())
-
-    meta = data.get("meta", {})
-    doc.add_paragraph()
-    ps = doc.add_paragraph("DATOS GENERALES")
-    ps.runs[0].bold = True
-    ps.runs[0].font.color.rgb = AZUL
-
-    tabla = doc.add_table(rows=0, cols=2)
-    tabla.style = "Table Grid"
-    filas = [
-        ("N de Orden",  "#" + str(meta.get("numero_orden", "-"))),
-        ("Estado",      meta.get("estado", "-")),
-        ("Ubicacion",   meta.get("ubicacion", "-")),
-        ("Activo",      meta.get("activo", "-")),
-        ("Asignados",   ", ".join(meta.get("asignados", [])) or "-"),
-        ("Fecha",       meta.get("fecha") or datetime.date.today().strftime("%d/%m/%Y")),
-    ]
-    for etiq, val in filas:
-        fila = tabla.add_row()
-        fila.cells[0].width = Cm(5)
-        fila.cells[1].width = Cm(11)
-        rl = fila.cells[0].paragraphs[0].add_run(etiq)
-        rl.bold = True
-        rl.font.size = Pt(10)
-        fila.cells[1].paragraphs[0].add_run(str(val)).font.size = Pt(10)
-
-    doc.add_paragraph()
-    campos_form = data.get("campos", [])
-    if campos_form:
-        pc = doc.add_paragraph("TAREAS / CAMPOS COMPLETADOS")
-        pc.runs[0].bold = True
-        pc.runs[0].font.color.rgb = AZUL
-        for campo in campos_form:
-            e = campo.get("etiqueta", "")
-            v = campo.get("valor", "")
-            if e:
-                p = doc.add_paragraph(style="List Bullet")
-                re2 = p.add_run(e + ": ")
-                re2.bold = True
-                re2.font.size = Pt(10)
-                p.add_run(str(v)).font.size = Pt(10)
-        doc.add_paragraph()
-
-    if observaciones:
-        linea_h(doc.add_paragraph())
-        po = doc.add_paragraph("OBSERVACIONES")
-        ro = po.runs[0]
-        ro.bold = True
-        ro.font.size = Pt(11)
-        ro.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
-        pb = doc.add_paragraph(observaciones)
-        pb.runs[0].italic = True
-        pb.runs[0].font.size = Pt(10)
-        doc.add_paragraph()
-
-    buf = io.BytesIO()
-    doc.save(buf)
-    buf.seek(0)
-    return buf.read()
 # ─── HTML de la interfaz ──────────────────────────────────────────────────────
 UI = """<!DOCTYPE html>
 <html lang="es">
@@ -472,10 +362,6 @@ UI = """<!DOCTYPE html>
       <button class="remove-btn" id="removeBtn" title="Quitar archivo">✕</button>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
-      <label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label>
-      <textarea id="observaciones" rows="4" placeholder="Ej: El equipo requiere revision..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea>
-    </div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
       Generar informe membretado
@@ -511,7 +397,7 @@ UI = """<!DOCTYPE html>
       </div>
 
       <a class="btn-download" id="btnDownload" href="#" download>
-        ⬇️ Descargar Word membretado (.docx)
+        ⬇️ Descargar PDF membretado
       </a>
 
       <button class="btn-reset" id="btnReset">Procesar otro PDF</button>
@@ -656,7 +542,6 @@ UI = """<!DOCTYPE html>
 
     const form = new FormData();
     form.append('pdf', selectedFile);
-    form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
       const resp = await fetch('/generate', { method: 'POST', body: form });
@@ -686,7 +571,6 @@ def generate():
         return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
 
     pdf_bytes = request.files["pdf"].read()
-    observaciones = request.form.get("observaciones", "").strip()
     if not pdf_bytes:
         return jsonify({"error": "El archivo está vacío."}), 400
 
@@ -715,17 +599,14 @@ def generate():
     except Exception as exc:
         return jsonify({"error": f"Error al aplicar membrete: {exc}"}), 500
 
-    # 5. Generar .docx
-    try:
-        docx_out = generar_docx(data, observaciones)
-    except Exception as exc:
-        return jsonify({"error": f"Error al generar Word: {exc}"}), 500
-
+    # 4. Guardar PDF temporalmente y servir URL de descarga
     numero   = data.get("meta", {}).get("numero_orden", "informe")
-    filename = f"informe-{numero}.docx"
+    filename = f"informe-{numero}.pdf"
+
+    # Guardamos en memoria con un ID de sesión simple
     import hashlib, time
     file_id = hashlib.md5(f"{numero}{time.time()}".encode()).hexdigest()[:12]
-    _pdf_store[file_id] = (filename, docx_out)
+    _pdf_store[file_id] = (filename, pdf_out)
 
     val = data.get("validacion", {})
     warnings = val.get("valores_fuera_de_conjunto", [])
@@ -750,7 +631,7 @@ def download(file_id):
     filename, pdf_bytes = _pdf_store[file_id]
     return send_file(
         io.BytesIO(pdf_bytes),
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        mimetype="application/pdf",
         as_attachment=True,
         download_name=filename,
     )
