@@ -124,7 +124,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     NEGRO = RGBColor(0x00, 0x00, 0x00)
 
     # 1. ENCABEZADO Y PIE DE PÁGINA
-   LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
+    LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
 
     hdr = seccion.header
     ph = hdr.paragraphs[0]
