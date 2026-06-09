@@ -81,6 +81,9 @@ import base64
 import re
 import zipfile
 import shutil
+import shutil
+import tempfile
+from docx import Document
 import os
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
     if not os.path.exists(ruta_imagen_png):
