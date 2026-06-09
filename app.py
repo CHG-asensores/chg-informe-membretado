@@ -260,9 +260,8 @@ from docx import Document
 from docx.shared import Cm, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement, parse_xml
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.opc.constants import RELATIONSHIP_TYPE
 
 def set_cell_border(cell, **kwargs):
     """Manipula el XML para aplicar bordes a celdas específicas."""
@@ -297,9 +296,8 @@ from docx import Document
 from docx.shared import Cm, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement, parse_xml
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.opc.constants import RELATIONSHIP_TYPE
 
 def set_cell_border(cell, **kwargs):
     """Aplica bordes personalizados a las celdas (ej. para la caja azul de Categorías)."""
@@ -388,17 +386,107 @@ def limpiar_texto(texto):
     limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
     return limpio if limpio else "-"
 
+import io
+import base64
+import re
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+
+def agregar_marca_agua(seccion, ruta_imagen):
+    """Agrega imagen como fondo a página completa, detrás del texto."""
+    hdr = seccion.header
+    # Limpiar encabezado
+    for p in hdr.paragraphs:
+        p.clear()
+    
+    p = hdr.paragraphs[0]
+    run = p.add_run()
+    # Inserción base permitida
+    pic = run.add_picture(str(ruta_imagen), width=Cm(21), height=Cm(29.7))
+    
+    # Transformación a 'Detrás del texto' con reporte de errores
+    try:
+        drawing = run._r.find(qn('w:drawing'))
+        if drawing is not None:
+            inline = drawing.find(qn('wp:inline'))
+            if inline is not None:
+                anchor = OxmlElement('wp:anchor')
+                anchor.set('distT', '0')
+                anchor.set('distB', '0')
+                anchor.set('distL', '0')
+                anchor.set('distR', '0')
+                anchor.set('simplePos', '0')
+                anchor.set('relativeHeight', '0')
+                anchor.set('behindDoc', '1') # 1 = Detrás del texto
+                anchor.set('locked', '0')
+                anchor.set('layoutInCell', '1')
+                anchor.set('allowOverlap', '1')
+                
+                simplePos = OxmlElement('wp:simplePos')
+                simplePos.set('x', '0')
+                simplePos.set('y', '0')
+                anchor.append(simplePos)
+                
+                posH = OxmlElement('wp:positionH')
+                posH.set('relativeFrom', 'page')
+                offsetH = OxmlElement('wp:posOffset')
+                offsetH.text = '0'
+                posH.append(offsetH)
+                anchor.append(posH)
+                
+                posV = OxmlElement('wp:positionV')
+                posV.set('relativeFrom', 'page')
+                offsetV = OxmlElement('wp:posOffset')
+                offsetV.text = '0'
+                posV.append(offsetV)
+                anchor.append(posV)
+                
+                for child in list(inline):
+                    anchor.append(child)
+                    
+                drawing.replace(inline, anchor)
+    except Exception as e:
+        raise RuntimeError(f"Error al insertar marca de agua: {e}")
+
+def set_cell_border(cell, **kwargs):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcBorders = tcPr.first_child_found_in("w:tcBorders")
+    if tcBorders is None:
+        tcBorders = OxmlElement('w:tcBorders')
+        tcPr.append(tcBorders)
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        edge_data = kwargs.get(edge)
+        if edge_data:
+            tag = 'w:{}'.format(edge)
+            element = tcBorders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tcBorders.append(element)
+            for key, val in edge_data.items():
+                element.set(qn('w:{}'.format(key)), str(val))
+
+def limpiar_texto(texto):
+    if not texto: return "-"
+    limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
+    return limpio if limpio else "-"
+
 def generar_docx_con_observaciones(data, observaciones_extra):
     doc = Document()
     
-    # 1. CONFIGURACIÓN DE PÁGINA A4
+    # 1. CONFIGURACIÓN DE PÁGINA
     seccion = doc.sections[0]
     seccion.page_height = Cm(29.7)
     seccion.page_width = Cm(21.0)
     
-    # Márgenes para el contenido principal
-    seccion.top_margin = Cm(3.0)
-    seccion.bottom_margin = Cm(3.0)
+    # Márgenes de contenido: Top a 4.5 para no pisar el logo superior del fondo
+    # Bottom a 3.5 para no pisar la información de la empresa (pie del fondo)
+    seccion.top_margin = Cm(4.5)
+    seccion.bottom_margin = Cm(3.5)
     seccion.left_margin = Cm(1.5)
     seccion.right_margin = Cm(1.5)
     
@@ -411,7 +499,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     style.font.name = 'Arial'
     style.font.size = Pt(9.5)
 
-    # 2. ENCABEZADO A PÁGINA COMPLETA (Patrón solicitado)
+    # 2. MARCA DE AGUA
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
     if LOGO.exists():
         agregar_marca_agua(seccion, str(LOGO))
@@ -423,29 +511,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     obs = data.get("observaciones", {})
     firma = data.get("firma", {})
 
-    # 4. RECUADRO NEGRO SUPERIOR ("CHG Ascensores")
-    tbl_top = doc.add_table(rows=1, cols=2)
-    tbl_top.autofit = False
-    tbl_top.columns[0].width = Cm(1.5)
-    tbl_top.columns[1].width = Cm(16.5)
-    
-    cell_box = tbl_top.cell(0, 0)
-    set_cell_bg_color(cell_box, "000000")
-    p_box = cell_box.paragraphs[0]
-    p_box.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_box = p_box.add_run(" N ")
-    r_box.font.color.rgb = RGBColor(255, 255, 255)
-    r_box.font.bold = True
-    
-    cell_text = tbl_top.cell(0, 1)
-    p_text = cell_text.paragraphs[0]
-    r_text = p_text.add_run("   CHG Ascensores")
-    r_text.font.bold = True
-    r_text.font.size = Pt(11)
-
-    doc.add_paragraph()
-
-    # 5. METADATOS EN COLUMNAS (Estilo MaintainX)
+    # 4. METADATOS
     tbl_meta = doc.add_table(rows=4, cols=2)
     tbl_meta.autofit = False
     tbl_meta.columns[0].width = Cm(9.0)
@@ -510,7 +576,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     r_p_val.font.color.rgb = AZUL_LINK
     r_p_val.underline = True
 
-    # 6. CHECKLISTS APILADOS (Estilo visual MaintainX)
+    # 5. CHECKLISTS APILADOS
     for sec in secciones:
         ps = doc.add_paragraph()
         ps.paragraph_format.space_before = Pt(18)
@@ -544,7 +610,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             r_v.bold = True
             r_v.font.color.rgb = NEGRO_VALOR
 
-    # 7. OBSERVACIONES Y RECOMENDACIONES
+    # 6. OBSERVACIONES Y RECOMENDACIONES
     p_obs_title = doc.add_paragraph()
     p_obs_title.paragraph_format.space_before = Pt(24)
     p_obs_title.paragraph_format.space_after = Pt(6)
@@ -574,7 +640,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         r_ev = p_eval.add_run(limpiar_texto(obs["evaluacion_final"]))
         r_ev.bold = True
 
-    # 8. FIRMA
+    # 7. FIRMA
     doc.add_paragraph()
     pfi = doc.add_paragraph()
     run_firma = pfi.add_run("Firma del cliente:")
@@ -598,7 +664,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         ps2.runs[0].font.size = Pt(8)
         ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
 
-    # 9. FOTOGRAFÍAS
+    # 8. FOTOGRAFÍAS
     if fotos:
         for foto in fotos:
             doc.add_page_break()
@@ -614,31 +680,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
                     p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p_img.add_run().add_picture(io.BytesIO(img_bytes), width=Cm(16))
                 except Exception: pass
-
-    # 10. PIE DE PÁGINA
-    ftr = seccion.footer
-    tbl_ftr = ftr.add_table(rows=1, cols=2, width=Cm(17))
-    tbl_ftr.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for c in tbl_ftr.rows[0].cells:
-        set_cell_border(c, top={"val": "single", "sz": "6", "color": "D1D5DB"})
-        
-    c_left = tbl_ftr.cell(0, 0)
-    c_right = tbl_ftr.cell(0, 1)
-    c_left.width = Cm(8)
-    c_right.width = Cm(9)
-    
-    p_l = c_left.paragraphs[0]
-    p_l.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    r_l = p_l.add_run("\nGenerado para CHG Ascensores")
-    r_l.font.color.rgb = GRIS_ETIQUETA
-    r_l.font.size = Pt(8)
-    
-    p_r = c_right.paragraphs[0]
-    p_r.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_r = p_r.add_run("\n947234073\n(01) 627-9422\ncomercial@chgascensor.com\nAv. La Encalada N°110 - Surco")
-    r_r.font.color.rgb = AZUL_LINK
-    r_r.font.size = Pt(8.5)
-    r_r.bold = True
 
     buf = io.BytesIO()
     doc.save(buf)
