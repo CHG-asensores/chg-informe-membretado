@@ -615,6 +615,24 @@ UI = """<!DOCTYPE html>
     resetFile();
   });
 
+  document.getElementById('btnGenerateWord').addEventListener('click', async () => {
+    if (!selectedFile) return;
+    const form = new FormData();
+    form.append('pdf', selectedFile);
+    form.append('observaciones', document.getElementById('observaciones').value.trim());
+    try {
+      const resp = await fetch('/generate-word', { method: 'POST', body: form });
+      if (!resp.ok) { const d = await resp.json(); alert(d.error); return; }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = selectedFile.name.replace('.pdf', '') + '_observaciones.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch(err) { alert('Error: ' + err.message); }
+  });
+
   btnGenerate.addEventListener('click', async () => {
     if (!selectedFile) return;
     showLoading();
