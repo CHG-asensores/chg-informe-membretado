@@ -229,6 +229,22 @@ from docx.oxml.ns import qn
 
 
 
+import io, base64, re, zipfile, shutil, os, tempfile
+
+from pathlib import Path
+
+from docx import Document
+
+from docx.shared import Cm, Pt, RGBColor
+
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from docx.oxml import OxmlElement
+
+from docx.oxml.ns import qn
+
+
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
 
     """Inserta imagen a página completa en el encabezado (Header) manipulando el ZIP.
@@ -1009,7 +1025,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 # PIE DE PÁGINA
     ftr = seccion.footer
     p_ftr = ftr.paragraphs[0]
-    p_ftr.paragraph_format.space_before = Pt(4)
+    p_ftr.paragraph_format.space_before = Pt(20)
     from docx.oxml.ns import qn as _qn
     from docx.oxml import OxmlElement as _OxmlEl
     pPr = p_ftr._p.get_or_add_pPr()
