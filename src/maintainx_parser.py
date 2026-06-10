@@ -328,12 +328,18 @@ def parse_pdf(pdf_bytes):
 
             # ─── HISTORIAL ───────────────────────────────────────────────────
             elif state == "HISTORIAL":
+                if text in ("Firmado por", "Fecha"):
+                    state = "DONE_HIST"
+                    i += 1; continue
                 # Líneas alternas: acción / fecha
                 if re.match(r"^\d{2}/\d{2}/\d{4}", text):
                     if historial:
                         historial[-1]["fecha"] = text
                 else:
                     historial.append({"accion": text, "fecha": ""})
+
+            elif state == "DONE_HIST":
+                pass
 
             i += 1
 
