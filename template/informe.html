@@ -3,14 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  /* ═══ Página A4: márgenes que reservan espacio para el membrete ═══ */
   @page {
     size: A4;
     margin: 32mm 14mm 28mm 14mm;
   }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
-
   body {
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10pt;
@@ -19,7 +16,7 @@
     print-color-adjust: exact;
   }
 
-  /* ═══ Metadatos: grid 2 columnas con iconos ═══ */
+  /* ═══ Metadatos ═══ */
   .meta-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -38,30 +35,11 @@
     gap: 5px;
     margin-bottom: 1.5mm;
   }
-  .meta-label svg {
-    width: 11px; height: 11px;
-    stroke: #6b7280;
-    fill: none;
-    stroke-width: 2;
-  }
-  .meta-value {
-    font-size: 10.5pt;
-    color: #1a1a1a;
-  }
+  .meta-label svg { width: 11px; height: 11px; stroke: #6b7280; fill: none; stroke-width: 2; }
+  .meta-value { font-size: 10.5pt; color: #1a1a1a; }
   .meta-value.bold { font-weight: bold; }
-  .meta-sub {
-    font-size: 8.5pt;
-    color: #4b5563;
-    margin-top: 0.5mm;
-  }
-
-  .estado-check {
-    color: #16a34a;
-    font-weight: bold;
-    font-size: 12pt;
-    margin-right: 3px;
-  }
-
+  .meta-sub { font-size: 8.5pt; color: #4b5563; margin-top: 0.5mm; }
+  .estado-check { color: #16a34a; font-weight: bold; font-size: 12pt; margin-right: 3px; }
   .categoria-chip {
     display: inline-block;
     border: 1px solid #3b82f6;
@@ -71,13 +49,7 @@
     font-size: 9pt;
     margin: 0 2px 2px 0;
   }
-
-  .asignado {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 1mm;
-  }
+  .asignado { display: flex; align-items: center; gap: 6px; margin-bottom: 1mm; }
   .asignado-avatar {
     width: 18px; height: 18px;
     border-radius: 50%;
@@ -91,49 +63,51 @@
     flex-shrink: 0;
   }
 
-  /* ═══ Título principal ═══ */
+  /* ═══ Procedimiento y campos ═══ */
+  .procedimiento-bloque {
+    margin: 5mm 0 3mm 0;
+  }
+  .procedimiento-label {
+    font-size: 8pt;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 1mm;
+  }
   .titulo-principal {
-    text-align: center;
-    font-size: 16pt;
+    font-size: 15pt;
     font-weight: bold;
     color: #1d4ed8;
     text-decoration: underline;
-    margin: 8mm 0;
-    page-break-after: avoid;
+    margin-bottom: 3mm;
   }
-
-  /* ═══ Secciones de inspección ═══ */
-  .seccion {
-    margin-top: 6mm;
-    page-break-inside: avoid;
-  }
-  .seccion-titulo {
-    font-size: 11pt;
+  .campos-completados {
+    display: inline-block;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 1mm 4mm;
+    font-size: 9pt;
+    color: #1d4ed8;
     font-weight: bold;
+    margin-bottom: 2mm;
+  }
+  .fecha-line {
+    font-size: 9.5pt;
     color: #1a1a1a;
-    margin-bottom: 4mm;
-    page-break-after: avoid;
+    margin: 2mm 0 5mm 0;
   }
-  .campo {
-    margin-bottom: 4mm;
-    page-break-inside: avoid;
-  }
-  .campo-etiqueta {
-    font-size: 10pt;
-    color: #1f2937;
-    margin-bottom: 1.2mm;
-  }
-  .campo-valor {
-    font-size: 10pt;
-    color: #1a1a1a;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
+  .fecha-line strong { font-weight: bold; }
+
+  /* ═══ Secciones ═══ */
+  .seccion { margin-top: 6mm; page-break-inside: avoid; }
+  .seccion-titulo { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin-bottom: 4mm; page-break-after: avoid; }
+  .campo { margin-bottom: 4mm; page-break-inside: avoid; }
+  .campo-etiqueta { font-size: 10pt; color: #1f2937; margin-bottom: 1.2mm; }
+  .campo-valor { font-size: 10pt; color: #1a1a1a; display: flex; align-items: center; gap: 6px; }
   .radio-blue {
     display: inline-block;
-    width: 11px;
-    height: 11px;
+    width: 11px; height: 11px;
     border-radius: 50%;
     background: #2563eb;
     border: 2px solid white;
@@ -141,36 +115,34 @@
     flex-shrink: 0;
   }
 
-  /* ═══ Fecha de ingreso ═══ */
-  .fecha-line {
-    font-size: 9.5pt;
-    color: #1a1a1a;
-    margin: 3mm 0 5mm 0;
-  }
-  .fecha-line strong { font-weight: bold; }
-
-  /* ═══ Fotografías de inspección ═══ */
-  .foto-page {
+  /* ═══ Fotografías de inspección: 3 por página ═══ */
+  .fotos-page {
     page-break-before: always;
     page-break-inside: avoid;
   }
+  .fotos-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6mm;
+  }
+  .foto-item { page-break-inside: avoid; }
   .foto-titulo {
-    font-size: 10pt;
+    font-size: 9.5pt;
+    font-weight: bold;
     color: #1f2937;
-    margin-bottom: 4mm;
+    margin-bottom: 2mm;
   }
   .foto-img {
     max-width: 100%;
-    max-height: 200mm;
+    max-height: 72mm;
     display: block;
-    border: 5px solid #dbeafe;
+    border: 3px solid #dbeafe;
     border-radius: 2px;
+    object-fit: contain;
   }
 
-  /* ═══ Observaciones y firma ═══ */
-  .obs-page {
-    page-break-before: always;
-  }
+  /* ═══ Observaciones ═══ */
+  .obs-page { page-break-before: always; }
   .obs-titulo {
     font-size: 12pt;
     font-weight: bold;
@@ -179,30 +151,11 @@
     padding-bottom: 2mm;
     margin-bottom: 6mm;
   }
-  .obs-row {
-    margin-bottom: 6mm;
-    page-break-inside: avoid;
-  }
-  .obs-label {
-    font-size: 10pt;
-    font-weight: bold;
-    color: #1a1a1a;
-    margin-bottom: 2mm;
-  }
-  .obs-valor {
-    font-size: 10pt;
-    color: #1a1a1a;
-    white-space: pre-line;
-    line-height: 1.6;
-  }
-  .obs-valor-list {
-    padding-left: 5mm;
-  }
-  .obs-valor-list li {
-    margin-bottom: 1.5mm;
-  }
-
-  /* Evaluación final con badge */
+  .obs-row { margin-bottom: 6mm; page-break-inside: avoid; }
+  .obs-label { font-size: 10pt; font-weight: bold; color: #1a1a1a; margin-bottom: 2mm; }
+  .obs-valor { font-size: 10pt; color: #1a1a1a; white-space: pre-line; line-height: 1.6; }
+  .obs-valor-list { padding-left: 5mm; }
+  .obs-valor-list li { margin-bottom: 1.5mm; }
   .eval-badge {
     display: inline-block;
     background: #dcfce7;
@@ -222,7 +175,43 @@
     font-weight: bold;
   }
 
-  /* Firma del cliente */
+  /* ═══ Detalles del repuesto ═══ */
+  .repuesto-titulo {
+    font-size: 11pt;
+    font-weight: bold;
+    color: #1a1a1a;
+    margin-bottom: 3mm;
+    margin-top: 4mm;
+  }
+  .repuesto-subtitulo { font-size: 10pt; font-weight: bold; color: #1a1a1a; margin-bottom: 2mm; }
+  .repuesto-info {
+    font-size: 10pt;
+    color: #1a1a1a;
+    white-space: pre-line;
+    line-height: 1.8;
+    margin-bottom: 4mm;
+    padding: 3mm 4mm;
+    background: #f8fafc;
+    border-left: 3px solid #2563eb;
+    border-radius: 2px;
+  }
+  .repuesto-fotos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3mm;
+    margin-top: 2mm;
+  }
+  .repuesto-fotos.una-foto { grid-template-columns: 1fr; }
+  .repuesto-foto-img {
+    width: 100%;
+    max-height: 60mm;
+    object-fit: cover;
+    border: 3px solid #dbeafe;
+    border-radius: 3px;
+    display: block;
+  }
+
+  /* ═══ Firma ═══ */
   .firma-box {
     border: 1px solid #d1d5db;
     border-radius: 3px;
@@ -232,81 +221,14 @@
     min-height: 30mm;
     margin-top: 2mm;
   }
-  .firma-img {
-    max-width: 65mm;
-    max-height: 25mm;
-    display: block;
-  }
-  .firma-texto {
-    font-size: 7.5pt;
-    color: #6b7280;
-    font-style: italic;
-    margin-top: 2mm;
-  }
-
-  /* ═══ Detalles del repuesto ═══ */
-  .repuesto-page {
-    page-break-before: always;
-    page-break-inside: avoid;
-  }
-  .repuesto-titulo {
-    font-size: 12pt;
-    font-weight: bold;
-    color: #1a1a1a;
-    border-bottom: 1px solid #d1d5db;
-    padding-bottom: 2mm;
-    margin-bottom: 6mm;
-  }
-  .repuesto-subtitulo {
-    font-size: 10pt;
-    font-weight: bold;
-    color: #1a1a1a;
-    margin-bottom: 3mm;
-  }
-  .repuesto-info {
-    font-size: 10pt;
-    color: #1a1a1a;
-    white-space: pre-line;
-    line-height: 1.8;
-    margin-bottom: 6mm;
-    padding: 3mm 4mm;
-    background: #f8fafc;
-    border-left: 3px solid #2563eb;
-    border-radius: 2px;
-  }
-  .repuesto-fotos {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4mm;
-    margin-top: 3mm;
-  }
-  .repuesto-foto-img {
-    width: 100%;
-    max-height: 70mm;
-    object-fit: cover;
-    border: 3px solid #dbeafe;
-    border-radius: 3px;
-    display: block;
-  }
-  /* Si hay solo 1 foto, ocupar todo el ancho */
-  .repuesto-fotos.solo-una {
-    grid-template-columns: 1fr;
-  }
-  .repuesto-fotos.solo-una .repuesto-foto-img {
-    max-width: 120mm;
-    max-height: 90mm;
-    object-fit: contain;
-  }
+  .firma-img { max-width: 65mm; max-height: 25mm; display: block; }
+  .firma-texto { font-size: 7.5pt; color: #6b7280; font-style: italic; margin-top: 2mm; }
 </style>
 </head>
 <body>
 
-<!-- ═════════════════════════════════════════════════════════ -->
-<!-- PÁGINA 1: Metadatos + Título + Inspección                  -->
-<!-- ═════════════════════════════════════════════════════════ -->
-
+<!-- ═══ METADATOS ═══ -->
 <div class="meta-grid">
-  {# ESTADO #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
@@ -317,8 +239,6 @@
       {% if estado == 'Hecho' %}<span class="estado-check">✓</span>{% endif %}{{ estado }}
     </div>
   </div>
-
-  {# FECHA DE VENCIMIENTO #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -326,8 +246,6 @@
     </div>
     <div class="meta-value">{{ data.meta.get('fecha_vencimiento', '') }}</div>
   </div>
-
-  {# TIEMPO ESTIMADO #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4M9 2h6M12 5v2"/></svg>
@@ -335,14 +253,10 @@
     </div>
     <div class="meta-value">{{ data.meta.get('tiempo_estimado', '') }}</div>
   </div>
-
-  {# TIPO DE TRABAJO #}
   <div class="meta-item">
     <div class="meta-label">TIPO DE TRABAJO</div>
     <div class="meta-value">{{ data.meta.get('tipo_trabajo', '') }}</div>
   </div>
-
-  {# ASIGNADOS #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 21v-1a6 6 0 0 1 12 0v1"/><circle cx="17" cy="8" r="2.5"/><path d="M19 14a4 4 0 0 1 3 4v1"/></svg>
@@ -351,14 +265,12 @@
     <div class="meta-value">
       {% for a in data.meta.get('asignados', []) %}
         <div class="asignado">
-          <span class="asignado-avatar">{{ a[:1] | upper }}{{ a.split(' ')[-1][:1] | upper if ' ' in a else '' }}</span>
+          <span class="asignado-avatar">{{ a[:1]|upper }}{{ a.split(' ')[-1][:1]|upper if ' ' in a else '' }}</span>
           <span>{{ a }}</span>
         </div>
       {% endfor %}
     </div>
   </div>
-
-  {# CATEGORÍAS #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
@@ -370,20 +282,14 @@
       {% endfor %}
     </div>
   </div>
-
-  {# UBICACIÓN #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
       UBICACIÓN
     </div>
     <div class="meta-value bold">{{ data.meta.get('ubicacion', '') }}</div>
-    {% if data.meta.get('direccion') %}
-    <div class="meta-sub">{{ data.meta.direccion }}</div>
-    {% endif %}
+    {% if data.meta.get('direccion') %}<div class="meta-sub">{{ data.meta.direccion }}</div>{% endif %}
   </div>
-
-  {# ACTIVO #}
   <div class="meta-item">
     <div class="meta-label">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -393,66 +299,95 @@
   </div>
 </div>
 
-<!-- Título principal -->
-<div class="titulo-principal">INFORME DE MANTENIMIENTO PREVENTIVO</div>
-
-<!-- Fecha de ingreso -->
-{% if data.meta.get('fecha_hora_ingreso') %}
-<div class="fecha-line">
-  Fecha y Hora de ingreso: <strong>{{ data.meta.fecha_hora_ingreso }}</strong>
+<!-- ═══ PROCEDIMIENTO ═══ -->
+<div class="procedimiento-bloque">
+  {% if data.meta.get('procedimiento') %}
+  <div class="procedimiento-label">≡ PROCEDIMIENTO</div>
+  {% endif %}
+  <div class="titulo-principal">{{ data.meta.get('procedimiento', 'INFORME DE MANTENIMIENTO PREVENTIVO')|upper }}</div>
+  {% if data.meta.get('campos_completados') %}
+  <div class="campos-completados">{{ data.meta.campos_completados }} Campos completados</div>
+  {% endif %}
 </div>
+
+{% if data.meta.get('fecha_hora_ingreso') %}
+<div class="fecha-line">Fecha y Hora de ingreso: <strong>{{ data.meta.fecha_hora_ingreso }}</strong></div>
 {% endif %}
 
-<!-- Secciones de inspección -->
+<!-- ═══ SECCIONES DE INSPECCIÓN ═══ -->
 {% for seccion in data.secciones %}
 <div class="seccion">
   <div class="seccion-titulo">{{ seccion.nombre }}</div>
   {% for campo in seccion.campos %}
   <div class="campo">
     <div class="campo-etiqueta">{{ campo.etiqueta }}:</div>
-    <div class="campo-valor">
-      <span class="radio-blue"></span>
-      <span>{{ campo.valor }}</span>
-    </div>
+    <div class="campo-valor"><span class="radio-blue"></span><span>{{ campo.valor }}</span></div>
   </div>
   {% endfor %}
 </div>
 {% endfor %}
 
-
-<!-- ═════════════════════════════════════════════════════════ -->
-<!-- FOTOGRAFÍAS DE INSPECCIÓN (una por página)                 -->
-<!-- ═════════════════════════════════════════════════════════ -->
-{% for foto in data.fotos %}
-{% if foto.data_base64 %}
-<div class="foto-page">
-  <div class="foto-titulo">{{ foto.etiqueta }}</div>
-  <img class="foto-img"
-       src="data:image/{{ foto.get('ext', 'jpeg') }};base64,{{ foto.data_base64 }}"
-       alt="{{ foto.etiqueta }}">
-</div>
+<!-- ═══ FOTOGRAFÍAS DE INSPECCIÓN (3 por página) ═══ -->
+{% set fotos_con_img = data.fotos | selectattr('data_base64') | list %}
+{% if fotos_con_img %}
+  {% for i in range(0, fotos_con_img|length, 3) %}
+  <div class="fotos-page">
+    <div class="fotos-grid">
+      {% for foto in fotos_con_img[i:i+3] %}
+      <div class="foto-item">
+        <div class="foto-titulo">{{ foto.etiqueta }}</div>
+        <img class="foto-img"
+             src="data:image/{{ foto.get('ext', 'jpeg') }};base64,{{ foto.data_base64 }}"
+             alt="{{ foto.etiqueta }}">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
 {% endif %}
-{% endfor %}
 
-
-<!-- ═════════════════════════════════════════════════════════ -->
-<!-- OBSERVACIONES Y FIRMA                                      -->
-<!-- ═════════════════════════════════════════════════════════ -->
+<!-- ═══ OBSERVACIONES Y RECOMENDACIONES ═══ -->
 <div class="obs-page">
   <div class="obs-titulo">Observaciones y Recomendaciones</div>
 
   <!-- Evaluación final -->
+  {% set ef = data.observaciones.get('evaluacion_final', '') %}
+  {% if ef and ef != '-' %}
   <div class="obs-row">
     <div class="obs-label">Evaluación final:</div>
-    {% set ef = data.observaciones.get('evaluacion_final', '') %}
     {% if ef == 'Operativo' %}
       <span class="eval-badge">{{ ef }}</span>
-    {% elif ef and ef != '-' %}
+    {% else %}
       <span class="eval-badge-otro">{{ ef }}</span>
     {% endif %}
   </div>
+  {% endif %}
 
-  <!-- Observaciones para cliente (lista línea por línea) -->
+  <!-- Detalles del repuesto -->
+  {% set dr = data.observaciones.get('detalles_repuesto', {}) %}
+  {% set dr_info = dr.get('info_tecnica', '') %}
+  {% set dr_fotos = dr.get('fotos', []) %}
+  {% if dr_info or dr_fotos %}
+  <div class="obs-row">
+    <div class="repuesto-titulo">Detalles del repuesto a reparar o cambiar</div>
+    {% if dr_info %}
+      <div class="repuesto-subtitulo">Información de repuesto (medidas, datos técnicos):</div>
+      <div class="repuesto-info">{{ dr_info }}</div>
+    {% endif %}
+    {% if dr_fotos %}
+      <div class="repuesto-subtitulo">Fotos del repuesto a reparar:</div>
+      <div class="repuesto-fotos {% if dr_fotos|length == 1 %}una-foto{% endif %}">
+        {% for foto in dr_fotos %}
+          <img class="repuesto-foto-img"
+               src="data:image/{{ foto.get('ext', 'jpeg') }};base64,{{ foto.data_base64 }}"
+               alt="Foto repuesto">
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Observaciones para cliente -->
   {% set obs_cliente = data.observaciones.get('para_cliente', '') %}
   {% if obs_cliente and obs_cliente != '-' %}
   <div class="obs-row">
@@ -460,9 +395,7 @@
     {% set lineas = obs_cliente.split('\n') %}
     {% if lineas|length > 1 %}
       <ul class="obs-valor-list">
-        {% for linea in lineas %}
-          {% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}
-        {% endfor %}
+        {% for linea in lineas %}{% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}{% endfor %}
       </ul>
     {% else %}
       <div class="obs-valor">{{ obs_cliente }}</div>
@@ -478,9 +411,7 @@
     {% set lineas_chg = obs_chg.split('\n') %}
     {% if lineas_chg|length > 1 %}
       <ul class="obs-valor-list">
-        {% for linea in lineas_chg %}
-          {% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}
-        {% endfor %}
+        {% for linea in lineas_chg %}{% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}{% endfor %}
       </ul>
     {% else %}
       <div class="obs-valor">{{ obs_chg }}</div>
@@ -488,7 +419,7 @@
   </div>
   {% endif %}
 
-  <!-- Firma del cliente -->
+  <!-- Firma -->
   <div class="obs-row">
     <div class="obs-label">Firma del cliente:</div>
     {% if data.firma.get('data_base64') %}
@@ -496,9 +427,7 @@
       <img class="firma-img"
            src="data:image/{{ data.firma.get('ext', 'png') }};base64,{{ data.firma.data_base64 }}"
            alt="Firma">
-      {% if data.firma.get('texto') %}
-      <div class="firma-texto">{{ data.firma.texto }}</div>
-      {% endif %}
+      {% if data.firma.get('texto') %}<div class="firma-texto">{{ data.firma.texto }}</div>{% endif %}
     </div>
     {% else %}
     <div class="firma-box"></div>
@@ -513,39 +442,6 @@
   </div>
   {% endif %}
 </div>
-
-
-<!-- ═════════════════════════════════════════════════════════ -->
-<!-- DETALLES DEL REPUESTO (solo si hay datos)                  -->
-<!-- ═════════════════════════════════════════════════════════ -->
-{% set dr = data.observaciones.get('detalles_repuesto', {}) %}
-{% set dr_info = dr.get('info_tecnica', '') %}
-{% set dr_fotos = dr.get('fotos', []) %}
-{% if dr_info or dr_fotos %}
-<div class="repuesto-page">
-  <div class="repuesto-titulo">Detalles del repuesto a reparar o cambiar</div>
-
-  {% if dr_info %}
-  <div class="obs-row">
-    <div class="repuesto-subtitulo">Información de repuesto (medidas, datos técnicos):</div>
-    <div class="repuesto-info">{{ dr_info }}</div>
-  </div>
-  {% endif %}
-
-  {% if dr_fotos %}
-  <div class="obs-row">
-    <div class="repuesto-subtitulo">Fotos del repuesto a reparar:</div>
-    <div class="repuesto-fotos {% if dr_fotos|length == 1 %}solo-una{% endif %}">
-      {% for foto in dr_fotos %}
-        <img class="repuesto-foto-img"
-             src="data:image/{{ foto.get('ext', 'jpeg') }};base64,{{ foto.data_base64 }}"
-             alt="Foto repuesto">
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-</div>
-{% endif %}
 
 </body>
 </html>
