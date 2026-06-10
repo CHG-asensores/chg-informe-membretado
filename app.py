@@ -117,33 +117,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-import io, base64, re, zipfile, shutil, os, tempfile
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-import io, base64, re, zipfile, shutil, os, tempfile
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
-import io, base64, re, zipfile, shutil, os, tempfile
-from pathlib import Path
-from docx import Document
-from docx.shared import Cm, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
     """Inserta imagen a página completa en el encabezado (Header) manipulando el ZIP.
-    Usa coordenadas absolutas (cm) para garantizar que sea 100% estático y no se repita en el PDF."""
+    Usa coordenadas absolutas (cm) para evitar bugs de PDF y mantener la imagen estática."""
     if not os.path.exists(ruta_imagen_png):
         return docx_bytes
 
@@ -214,11 +190,7 @@ def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
             
             if 'rIdBgWatermark' not in hdr_data:
                 # Inyectar al final del encabezado
-                if '</w:pPr>' in hdr_data:
-                    hdr_data = hdr_data.replace('</w:pPr>', f'</w:pPr>{vml_p}', 1)
-                else:
-                    hdr_data = hdr_data.replace('</w:p>', f'{vml_p}</w:p>', 1)
-                    
+                hdr_data = hdr_data.replace('</w:hdr>', f'{vml_p}</w:hdr>')
                 with open(hdr_path, 'w', encoding='utf-8') as f:
                     f.write(hdr_data)
 
@@ -262,6 +234,14 @@ def set_cell_margins_zero(cell):
         tcMar.append(node)
     tcPr.append(tcMar)
 
+def set_cell_bg_color(cell, color):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), color)
+    tcPr.append(shd)
+
 def limpiar_texto(texto):
     if not texto: return "-"
     limpio = re.sub(r'[☑\u2611]\s*|^V\s+', '', str(texto)).strip()
@@ -270,6 +250,7 @@ def limpiar_texto(texto):
 def generar_docx_con_observaciones(data, observaciones_extra):
     doc = Document()
     
+    # 1. CONFIGURACIÓN DE PÁGINA
     seccion = doc.sections[0]
     seccion.page_height = Cm(29.7)
     seccion.page_width = Cm(21.0)
@@ -281,7 +262,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     # Generar encabezado vacío para forzar a python-docx a crear header1.xml
     hdr = seccion.header
     hdr.paragraphs[0].text = ""
-
+    
     AZUL_LINK = RGBColor(0x25, 0x63, 0xEB)
     GRIS_ETIQUETA = RGBColor(0x6B, 0x72, 0x80)
     NEGRO_VALOR = RGBColor(0x00, 0x00, 0x00)
@@ -292,7 +273,6 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     style.font.size = Pt(11)
 
     LOGO = BASE_DIR / "template" / "assets" / "membrete.png"
-    TOP_LOGO = BASE_DIR / "template" / "assets" / "Logo_Word.png"
 
     meta = data.get("meta", {})
     secciones = data.get("secciones", [])
@@ -300,37 +280,37 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     obs = data.get("observaciones", {})
     firma = data.get("firma", {})
 
-    # INSERCIÓN DEL LOGO CAPTURADO Y EL TÍTULO "CHG Ascensores"
+    # 2. RECUADRO NEGRO SUPERIOR (Muy pequeño, solo para rodear la "N")
     tbl_top = doc.add_table(rows=1, cols=2)
     tbl_top.autofit = False
     
     c0 = tbl_top.cell(0, 0)
-    c0.width = Cm(1.8) 
-    tbl_top.columns[0].width = Cm(1.8)
-    # Se eliminó el fondo negro
-    set_cell_border(c0, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
+    c0.width = Cm(0.8)
+    tbl_top.columns[0].width = Cm(0.8)
+    set_cell_bg_color(c0, "111827")
     
     p0 = c0.paragraphs[0]
     p0.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if TOP_LOGO.exists():
-        p0.add_run().add_picture(str(TOP_LOGO), width=Cm(1.5))
-    else:
-        p0.add_run("N").bold = True
+    p0.paragraph_format.space_before = Pt(2)
+    p0.paragraph_format.space_after = Pt(2)
+    r0 = p0.add_run(" N ")
+    r0.font.color.rgb = RGBColor(255, 255, 255)
+    r0.font.bold = True
+    r0.font.size = Pt(9)
     
     c1 = tbl_top.cell(0, 1)
     c1.width = Cm(10.0)
     tbl_top.columns[1].width = Cm(10.0)
-    set_cell_border(c1, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
-    
     p1 = c1.paragraphs[0]
-    p1.paragraph_format.space_before = Pt(4)
+    p1.paragraph_format.space_before = Pt(2)
+    p1.paragraph_format.space_after = Pt(2)
     r1 = p1.add_run("  CHG Ascensores")
     r1.font.bold = True
-    r1.font.size = Pt(14)
+    r1.font.size = Pt(12)
 
     doc.add_paragraph()
 
-    # METADATOS EN COLUMNAS
+    # 3. METADATOS EN COLUMNAS
     tbl_meta = doc.add_table(rows=4, cols=2)
     tbl_meta.autofit = False
     tbl_meta.columns[0].width = Cm(9.0)
@@ -388,12 +368,12 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     doc.add_paragraph()
     
-    # PROCEDIMIENTO
+    # 4. PROCEDIMIENTO (Título muy grande, etiqueta a la izquierda)
     p_proc_lbl = doc.add_paragraph()
-    p_proc_lbl.paragraph_format.space_before = Pt(18)
+    p_proc_lbl.paragraph_format.space_before = Pt(20)
     p_proc_lbl.alignment = WD_ALIGN_PARAGRAPH.LEFT
     r_p_etiq = p_proc_lbl.add_run("≡ PROCEDIMIENTO")
-    r_p_etiq.font.size = Pt(9)
+    r_p_etiq.font.size = Pt(10)
     r_p_etiq.font.color.rgb = GRIS_ETIQUETA
 
     p_proc_val = doc.add_paragraph()
@@ -405,7 +385,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     r_p_val.font.color.rgb = AZUL_LINK
     r_p_val.underline = True
 
-    # CHECKLISTS APILADOS
+    # 5. CHECKLISTS APILADOS
     for sec in secciones:
         ps = doc.add_paragraph()
         ps.paragraph_format.space_before = Pt(24)
@@ -439,7 +419,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
             r_v.bold = True
             r_v.font.color.rgb = NEGRO_VALOR
 
-    # OBSERVACIONES Y RECOMENDACIONES
+    # 6. OBSERVACIONES Y RECOMENDACIONES
     p_obs_title = doc.add_paragraph()
     p_obs_title.paragraph_format.space_before = Pt(28)
     p_obs_title.paragraph_format.space_after = Pt(8)
@@ -477,7 +457,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         r_ev.bold = True
         r_ev.font.color.rgb = NEGRO_VALOR
 
-    # FIRMA
+    # 7. FIRMA
     doc.add_paragraph()
     pfi = doc.add_paragraph()
     run_firma = pfi.add_run("Firma del cliente:")
@@ -501,7 +481,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
         ps2.runs[0].font.size = Pt(9)
         ps2.runs[0].font.color.rgb = GRIS_ETIQUETA
 
-    # FOTOGRAFÍAS
+    # 8. FOTOGRAFÍAS (Con borde azul ceñido)
     if fotos:
         for foto in fotos:
             p_foto_title = doc.add_paragraph()
