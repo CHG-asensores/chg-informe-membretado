@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <style>
   /* ═══ Página A4: márgenes que reservan espacio para el membrete ═══ */
-  /* El membrete se sobrepone en post-procesamiento (PyMuPDF) */
   @page {
     size: A4;
     margin: 32mm 14mm 28mm 14mm;
@@ -56,7 +55,6 @@
     margin-top: 0.5mm;
   }
 
-  /* Estado con check verde */
   .estado-check {
     color: #16a34a;
     font-weight: bold;
@@ -64,7 +62,6 @@
     margin-right: 3px;
   }
 
-  /* Categoría como chip azul con borde */
   .categoria-chip {
     display: inline-block;
     border: 1px solid #3b82f6;
@@ -75,7 +72,6 @@
     margin: 0 2px 2px 0;
   }
 
-  /* Asignado con avatar circular */
   .asignado {
     display: flex;
     align-items: center;
@@ -106,7 +102,7 @@
     page-break-after: avoid;
   }
 
-  /* ═══ Secciones de inspección (formato lista) ═══ */
+  /* ═══ Secciones de inspección ═══ */
   .seccion {
     margin-top: 6mm;
     page-break-inside: avoid;
@@ -134,7 +130,6 @@
     align-items: center;
     gap: 6px;
   }
-  /* Radio button azul estilo target */
   .radio-blue {
     display: inline-block;
     width: 11px;
@@ -154,7 +149,7 @@
   }
   .fecha-line strong { font-weight: bold; }
 
-  /* ═══ Página de fotos ═══ */
+  /* ═══ Fotografías de inspección ═══ */
   .foto-page {
     page-break-before: always;
     page-break-inside: avoid;
@@ -200,9 +195,11 @@
     white-space: pre-line;
     line-height: 1.6;
   }
+  .obs-valor-list {
+    padding-left: 5mm;
+  }
   .obs-valor-list li {
     margin-bottom: 1.5mm;
-    margin-left: 5mm;
   }
 
   /* Evaluación final con badge */
@@ -245,6 +242,60 @@
     color: #6b7280;
     font-style: italic;
     margin-top: 2mm;
+  }
+
+  /* ═══ Detalles del repuesto ═══ */
+  .repuesto-page {
+    page-break-before: always;
+    page-break-inside: avoid;
+  }
+  .repuesto-titulo {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #1a1a1a;
+    border-bottom: 1px solid #d1d5db;
+    padding-bottom: 2mm;
+    margin-bottom: 6mm;
+  }
+  .repuesto-subtitulo {
+    font-size: 10pt;
+    font-weight: bold;
+    color: #1a1a1a;
+    margin-bottom: 3mm;
+  }
+  .repuesto-info {
+    font-size: 10pt;
+    color: #1a1a1a;
+    white-space: pre-line;
+    line-height: 1.8;
+    margin-bottom: 6mm;
+    padding: 3mm 4mm;
+    background: #f8fafc;
+    border-left: 3px solid #2563eb;
+    border-radius: 2px;
+  }
+  .repuesto-fotos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+    margin-top: 3mm;
+  }
+  .repuesto-foto-img {
+    width: 100%;
+    max-height: 70mm;
+    object-fit: cover;
+    border: 3px solid #dbeafe;
+    border-radius: 3px;
+    display: block;
+  }
+  /* Si hay solo 1 foto, ocupar todo el ancho */
+  .repuesto-fotos.solo-una {
+    grid-template-columns: 1fr;
+  }
+  .repuesto-fotos.solo-una .repuesto-foto-img {
+    max-width: 120mm;
+    max-height: 90mm;
+    object-fit: contain;
   }
 </style>
 </head>
@@ -352,7 +403,7 @@
 </div>
 {% endif %}
 
-<!-- Secciones de inspección como listas verticales -->
+<!-- Secciones de inspección -->
 {% for seccion in data.secciones %}
 <div class="seccion">
   <div class="seccion-titulo">{{ seccion.nombre }}</div>
@@ -370,7 +421,7 @@
 
 
 <!-- ═════════════════════════════════════════════════════════ -->
-<!-- FOTOGRAFÍAS (una por página)                               -->
+<!-- FOTOGRAFÍAS DE INSPECCIÓN (una por página)                 -->
 <!-- ═════════════════════════════════════════════════════════ -->
 {% for foto in data.fotos %}
 {% if foto.data_base64 %}
@@ -406,7 +457,7 @@
   {% if obs_cliente and obs_cliente != '-' %}
   <div class="obs-row">
     <div class="obs-label">Observaciones y Recomendaciones para cliente:</div>
-    {% set lineas = obs_cliente.replace(';', '\n').replace(',', '\n').split('\n') %}
+    {% set lineas = obs_cliente.split('\n') %}
     {% if lineas|length > 1 %}
       <ul class="obs-valor-list">
         {% for linea in lineas %}
@@ -424,7 +475,16 @@
   {% if obs_chg and obs_chg != '-' %}
   <div class="obs-row">
     <div class="obs-label">Observaciones para CHG Ascensores:</div>
-    <div class="obs-valor">{{ obs_chg }}</div>
+    {% set lineas_chg = obs_chg.split('\n') %}
+    {% if lineas_chg|length > 1 %}
+      <ul class="obs-valor-list">
+        {% for linea in lineas_chg %}
+          {% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="obs-valor">{{ obs_chg }}</div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -453,6 +513,39 @@
   </div>
   {% endif %}
 </div>
+
+
+<!-- ═════════════════════════════════════════════════════════ -->
+<!-- DETALLES DEL REPUESTO (solo si hay datos)                  -->
+<!-- ═════════════════════════════════════════════════════════ -->
+{% set dr = data.observaciones.get('detalles_repuesto', {}) %}
+{% set dr_info = dr.get('info_tecnica', '') %}
+{% set dr_fotos = dr.get('fotos', []) %}
+{% if dr_info or dr_fotos %}
+<div class="repuesto-page">
+  <div class="repuesto-titulo">Detalles del repuesto a reparar o cambiar</div>
+
+  {% if dr_info %}
+  <div class="obs-row">
+    <div class="repuesto-subtitulo">Información de repuesto (medidas, datos técnicos):</div>
+    <div class="repuesto-info">{{ dr_info }}</div>
+  </div>
+  {% endif %}
+
+  {% if dr_fotos %}
+  <div class="obs-row">
+    <div class="repuesto-subtitulo">Fotos del repuesto a reparar:</div>
+    <div class="repuesto-fotos {% if dr_fotos|length == 1 %}solo-una{% endif %}">
+      {% for foto in dr_fotos %}
+        <img class="repuesto-foto-img"
+             src="data:image/{{ foto.get('ext', 'jpeg') }};base64,{{ foto.data_base64 }}"
+             alt="Foto repuesto">
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 
 </body>
 </html>

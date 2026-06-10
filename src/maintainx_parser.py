@@ -26,9 +26,6 @@ def extract_lines(page):
             text = "".join(s["text"] for s in line["spans"]).strip()
             if not text:
                 continue
-            # Normalizar non-breaking space (\xa0) → espacio normal para que
-            # las comparaciones literales (text == "Observaciones y Recomen...")
-            # funcionen consistentemente.
             text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
             is_bold = any(s["flags"] & BOLD_FLAG for s in line["spans"] if s["text"].strip())
             lines.append({"text": text, "y": y0, "x": line["bbox"][0], "bold": is_bold})
@@ -42,7 +39,15 @@ def parse_pdf(pdf_bytes):
     meta      = {}
     secciones = []
     fotos     = []
-    obs       = {"evaluacion_final": "", "para_cliente": "", "para_chg": ""}
+    obs       = {
+        "evaluacion_final": "",
+        "para_cliente": "",
+        "para_chg": "",
+        "detalles_repuesto": {
+            "info_tecnica": "",
+            "fotos": []
+        }
+    }
     firma     = {"data_base64": "", "texto": ""}
 
     # Extraer número de orden del encabezado azul (zona de ruido, solo página 1)
@@ -79,7 +84,6 @@ def parse_pdf(pdf_bytes):
     state             = "HEADER"
     current_section   = None
     pending_label     = None
-    # En el HEADER el layout es de 2 columnas. Tracked por separado.
     pending_left      = None
     pending_right     = None
     COL_THRESHOLD     = 180  # pt: x < 180 = columna izquierda
@@ -87,9 +91,15 @@ def parse_pdf(pdf_bytes):
     campos_parseados  = 0
     valores_invalidos = []
 
-    for page in doc:
+    # Para rastrear imágenes por página y a qué sección pertenecen
+    paginas_estado = {}  # page_num -> state al procesar esa página
+
+    for page_num, page in enumerate(doc):
         lines     = extract_lines(page)
         page_imgs = page.get_images(full=True)
+
+        # Guardar el estado al inicio de la página para asignación de imágenes
+        state_inicio_pagina = state
 
         i = 0
         while i < len(lines):
@@ -105,7 +115,7 @@ def parse_pdf(pdf_bytes):
                 i += 1
                 continue
 
-            # ─── HEADER (2 columnas, distinguidas por x) ─────────────────────
+            # ─── HEADER ──────────────────────────────────────────────────────
             if state == "HEADER":
                 m = re.match(r"^(\d+)\s*/\s*(\d+)$", text)
                 if m:
@@ -124,7 +134,6 @@ def parse_pdf(pdf_bytes):
                         i += 2
                     else:
                         i += 1
-                    # Transición a SECTIONS — la próxima línea bold inicia sección
                     state = "SECTIONS"
                     pending_left = pending_right = None
                     continue
@@ -132,7 +141,6 @@ def parse_pdf(pdf_bytes):
                 col_is_left = entry["x"] < COL_THRESHOLD
                 pending     = pending_left if col_is_left else pending_right
 
-                # 1) Etiqueta de header → set pending de su columna
                 if text in HEADER_LABELS:
                     if col_is_left:
                         pending_left  = HEADER_LABELS[text]
@@ -141,7 +149,6 @@ def parse_pdf(pdf_bytes):
                     i += 1
                     continue
 
-                # 2) Valor para pending de la columna actual (PRIORIDAD sobre bold)
                 if pending:
                     if pending == "asignados":
                         meta.setdefault("asignados", [])
@@ -220,6 +227,13 @@ def parse_pdf(pdf_bytes):
 
             # ─── OBSERVATIONS ────────────────────────────────────────────────
             elif state == "OBSERVATIONS":
+                # Detectar inicio de sección "Detalles del repuesto"
+                if text == "Detalles del repuesto a reparar o cambiar" and is_bold:
+                    state         = "REPUESTO"
+                    pending_label = None
+                    i += 1
+                    continue
+
                 if text == "Evaluación final:":
                     pending_label = "evaluacion_final"
                 elif text == "Observaciones y Recomendaciones para cliente:":
@@ -234,20 +248,63 @@ def parse_pdf(pdf_bytes):
                 elif pending_label:
                     if pending_label == "evaluacion_final":
                         obs["evaluacion_final"] = text
+                        pending_label = None  # solo 1 línea
                     elif pending_label == "para_cliente":
-                        obs["para_cliente"] = text
+                        # ACUMULAR: múltiples líneas separadas por \n
+                        if obs["para_cliente"]:
+                            obs["para_cliente"] += "\n" + text
+                        else:
+                            obs["para_cliente"] = text
+                        # NO resetear pending_label → sigue acumulando
                     elif pending_label == "para_chg":
-                        obs["para_chg"] = text
+                        # ACUMULAR también
+                        if obs["para_chg"]:
+                            obs["para_chg"] += "\n" + text
+                        else:
+                            obs["para_chg"] = text
+                        # NO resetear pending_label
                     elif pending_label == "fecha_salida":
                         meta["fecha_hora_salida"] = text
+                        pending_label = None
+
+            # ─── REPUESTO ────────────────────────────────────────────────────
+            elif state == "REPUESTO":
+                # Volver a observaciones si encontramos "Observaciones y Recomendaciones"
+                if text == "Observaciones y Recomendaciones" and is_bold:
+                    state         = "OBSERVATIONS"
                     pending_label = None
+                    i += 1
+                    continue
+
+                # Subetiquetas conocidas de esta sección
+                if text == "Información de repuesto (medidas, datos técnicos):":
+                    pending_label = "info_tecnica"
+                    i += 1
+                    continue
+
+                if re.match(r"^Fotos del repuesto a reparar", text, re.I):
+                    pending_label = "fotos_repuesto"
+                    i += 1
+                    continue
+
+                if pending_label == "info_tecnica":
+                    # Acumular líneas de texto técnico
+                    if obs["detalles_repuesto"]["info_tecnica"]:
+                        obs["detalles_repuesto"]["info_tecnica"] += "\n" + text
+                    else:
+                        obs["detalles_repuesto"]["info_tecnica"] = text
+                    # Seguir acumulando hasta nueva etiqueta
+                elif pending_label == "fotos_repuesto":
+                    # Las fotos se extraen por imagen; aquí solo ignoramos texto
+                    pass
 
             i += 1
 
-        # Extraer imágenes de la página
+        # ── Asignación de imágenes por página ────────────────────────────────
         page_text = page.get_text()
-        has_foto  = bool(re.search(r"Fotograf[íi]a", page_text, re.I))
-        has_firma = "Firma del cliente" in page_text or "Firmado por" in page_text
+        has_foto_inspeccion = bool(re.search(r"Fotograf[íi]a", page_text, re.I))
+        has_firma           = "Firma del cliente" in page_text or "Firmado por" in page_text
+        has_repuesto        = "Detalles del repuesto" in page_text or "Fotos del repuesto" in page_text
 
         for img_info in page_imgs:
             xref = img_info[0]
@@ -256,13 +313,19 @@ def parse_pdf(pdf_bytes):
                 img_b64  = base64.b64encode(base_img["image"]).decode("utf-8")
                 img_ext  = base_img.get("ext", "jpeg")
 
-                if has_foto and not has_firma:
+                if has_repuesto and not has_firma:
+                    # Imagen pertenece a "Detalles del repuesto"
+                    obs["detalles_repuesto"]["fotos"].append({
+                        "data_base64": img_b64,
+                        "ext": img_ext
+                    })
+                elif has_foto_inspeccion and not has_firma and not has_repuesto:
                     for foto in fotos:
                         if not foto["data_base64"]:
                             foto["data_base64"] = img_b64
                             foto["ext"]         = img_ext
                             break
-                elif has_firma and not has_foto:
+                elif has_firma and not has_foto_inspeccion and not has_repuesto:
                     if not firma["data_base64"]:
                         firma["data_base64"] = img_b64
                         firma["ext"]         = img_ext
@@ -274,10 +337,7 @@ def parse_pdf(pdf_bytes):
 
     doc.close()
 
-    # Post-procesamiento: si asignados son nombres partidos en líneas (todos
-    # de una sola palabra), unirlos en uno solo. MaintainX típicamente lista
-    # nombres completos por persona; entradas de una sola palabra suelen ser
-    # el mismo nombre/apellido en líneas separadas.
+    # Post-procesamiento: unir nombres partidos en líneas
     asignados = meta.get("asignados", [])
     if len(asignados) > 1 and all(" " not in a for a in asignados):
         meta["asignados"] = [" ".join(asignados)]
