@@ -517,9 +517,9 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     c0 = tbl_top.cell(0, 0)
 
-    c0.width = Cm(0.8)
+    c0.width = Cm(1.8)
 
-    tbl_top.columns[0].width = Cm(0.8)
+    tbl_top.columns[0].width = Cm(1.8)
 
     TOP_LOGO = BASE_DIR / "template" / "assets" / "Logo_Word.png"
     p0 = c0.paragraphs[0]
