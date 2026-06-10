@@ -133,6 +133,22 @@ from docx.oxml.ns import qn
 
 
 
+import io, base64, re, zipfile, shutil, os, tempfile
+
+from pathlib import Path
+
+from docx import Document
+
+from docx.shared import Cm, Pt, RGBColor
+
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from docx.oxml import OxmlElement
+
+from docx.oxml.ns import qn
+
+
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
 
     """Inserta imagen a página completa en el encabezado (Header) manipulando el ZIP.
@@ -183,7 +199,7 @@ def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
 
         
 
-        rel_str = '<Relationship Id="rIdBgWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/bg.png" TargetMode="Internal"/>'
+        rel_str = '<Relationship Id="rIdBgWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/bg.png" TargetMode="Internal"/>'
 
         
 
