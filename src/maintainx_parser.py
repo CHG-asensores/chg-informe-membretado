@@ -252,6 +252,8 @@ def parse_pdf(pdf_bytes):
                 elif re.match(r"^Firmado por .+", text):
                     firma["texto"] = text
                     pending_label = None
+                elif text == "Firma del cliente:":
+                    pending_label = None
                 elif text == "INFORMACIÓN DE ORDEN DE TRABAJO":
                     state = "INFO_ORDEN"
                     pending_label = None
