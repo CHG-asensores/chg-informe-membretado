@@ -3,37 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  @page {
-    size: A4;
-    margin: 32mm 14mm 28mm 14mm;
-  }
+  @page { size: A4; margin: 32mm 14mm 28mm 14mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10pt;
-    color: #1a1a1a;
+    font-size: 10pt; color: #1a1a1a;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   /* ═══ Metadatos ═══ */
   .meta-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 10mm;
-    row-gap: 6mm;
-    margin-bottom: 8mm;
+    display: grid; grid-template-columns: 1fr 1fr;
+    column-gap: 10mm; row-gap: 6mm; margin-bottom: 6mm;
   }
   .meta-item { min-height: 14mm; }
   .meta-label {
-    font-size: 8pt;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-bottom: 1.5mm;
+    font-size: 8pt; color: #6b7280; text-transform: uppercase;
+    letter-spacing: 0.04em; display: flex; align-items: center;
+    gap: 5px; margin-bottom: 1.5mm;
   }
   .meta-label svg { width: 11px; height: 11px; stroke: #6b7280; fill: none; stroke-width: 2; }
   .meta-value { font-size: 10.5pt; color: #1a1a1a; }
@@ -41,188 +29,113 @@
   .meta-sub { font-size: 8.5pt; color: #4b5563; margin-top: 0.5mm; }
   .estado-check { color: #16a34a; font-weight: bold; font-size: 12pt; margin-right: 3px; }
   .categoria-chip {
-    display: inline-block;
-    border: 1px solid #3b82f6;
-    color: #1d4ed8;
-    padding: 1mm 3mm;
-    border-radius: 3px;
-    font-size: 9pt;
-    margin: 0 2px 2px 0;
+    display: inline-block; border: 1px solid #3b82f6; color: #1d4ed8;
+    padding: 1mm 3mm; border-radius: 3px; font-size: 9pt; margin: 0 2px 2px 0;
   }
   .asignado { display: flex; align-items: center; gap: 6px; margin-bottom: 1mm; }
   .asignado-avatar {
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #1d4ed8;
-    color: white;
-    font-size: 7.5pt;
-    font-weight: bold;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    width: 18px; height: 18px; border-radius: 50%; background: #1d4ed8;
+    color: white; font-size: 7.5pt; font-weight: bold;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
 
-  /* ═══ Procedimiento y campos ═══ */
-  .procedimiento-bloque {
-    margin: 5mm 0 3mm 0;
+  /* ═══ Seguimiento ═══ */
+  .seguimiento-bloque {
+    margin: 4mm 0; padding: 3mm 4mm;
+    background: #f8fafc; border-left: 3px solid #94a3b8; border-radius: 2px;
   }
-  .procedimiento-label {
-    font-size: 8pt;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 1mm;
-  }
-  .titulo-principal {
-    font-size: 15pt;
-    font-weight: bold;
-    color: #1d4ed8;
-    text-decoration: underline;
-    margin-bottom: 3mm;
-  }
+  .seguimiento-titulo { font-size: 10pt; font-weight: bold; color: #475569; margin-bottom: 1mm; }
+  .seguimiento-contenido { font-size: 9.5pt; color: #64748b; font-style: italic; white-space: pre-line; }
+
+  /* ═══ Procedimiento ═══ */
+  .procedimiento-bloque { margin: 4mm 0 3mm 0; }
+  .procedimiento-label { font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1mm; }
+  .titulo-principal { font-size: 14pt; font-weight: bold; color: #1d4ed8; text-decoration: underline; margin-bottom: 2mm; }
   .campos-completados {
-    display: inline-block;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 4px;
-    padding: 1mm 4mm;
-    font-size: 9pt;
-    color: #1d4ed8;
-    font-weight: bold;
-    margin-bottom: 2mm;
+    display: inline-block; background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: 4px; padding: 1mm 4mm; font-size: 9pt; color: #1d4ed8; font-weight: bold; margin-bottom: 2mm;
   }
-  .fecha-line {
-    font-size: 9.5pt;
-    color: #1a1a1a;
-    margin: 2mm 0 5mm 0;
-  }
+  .fecha-line { font-size: 9.5pt; color: #1a1a1a; margin: 2mm 0 4mm 0; }
   .fecha-line strong { font-weight: bold; }
 
   /* ═══ Secciones ═══ */
-  .seccion { margin-top: 6mm; page-break-inside: avoid; }
-  .seccion-titulo { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin-bottom: 4mm; page-break-after: avoid; }
-  .campo { margin-bottom: 4mm; page-break-inside: avoid; }
-  .campo-etiqueta { font-size: 10pt; color: #1f2937; margin-bottom: 1.2mm; }
+  .seccion { margin-top: 5mm; page-break-inside: avoid; }
+  .seccion-titulo { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin-bottom: 3mm; page-break-after: avoid; }
+  .campo { margin-bottom: 3mm; page-break-inside: avoid; }
+  .campo-etiqueta { font-size: 10pt; color: #1f2937; margin-bottom: 1mm; }
   .campo-valor { font-size: 10pt; color: #1a1a1a; display: flex; align-items: center; gap: 6px; }
   .radio-blue {
-    display: inline-block;
-    width: 11px; height: 11px;
-    border-radius: 50%;
-    background: #2563eb;
-    border: 2px solid white;
-    box-shadow: 0 0 0 1.5px #2563eb;
-    flex-shrink: 0;
+    display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+    background: #2563eb; border: 2px solid white; box-shadow: 0 0 0 1.5px #2563eb; flex-shrink: 0;
   }
 
   /* ═══ Fotografías de inspección: 3 por página ═══ */
-  .fotos-page {
-    page-break-before: always;
-    page-break-inside: avoid;
-  }
-  .fotos-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 6mm;
-  }
+  .fotos-page { page-break-before: always; }
+  .fotos-grid { display: flex; flex-direction: column; gap: 4mm; }
   .foto-item { page-break-inside: avoid; }
-  .foto-titulo {
-    font-size: 9.5pt;
-    font-weight: bold;
-    color: #1f2937;
-    margin-bottom: 2mm;
-  }
+  .foto-titulo { font-size: 9pt; font-weight: bold; color: #1f2937; margin-bottom: 1.5mm; }
   .foto-img {
-    max-width: 100%;
-    max-height: 72mm;
-    display: block;
-    border: 3px solid #dbeafe;
-    border-radius: 2px;
-    object-fit: contain;
+    max-width: 100%; max-height: 58mm; display: block;
+    border: 2px solid #dbeafe; border-radius: 2px; object-fit: contain;
   }
 
   /* ═══ Observaciones ═══ */
   .obs-page { page-break-before: always; }
   .obs-titulo {
-    font-size: 12pt;
-    font-weight: bold;
-    color: #1a1a1a;
-    border-bottom: 1px solid #d1d5db;
-    padding-bottom: 2mm;
-    margin-bottom: 6mm;
+    font-size: 12pt; font-weight: bold; color: #1a1a1a;
+    border-bottom: 1px solid #d1d5db; padding-bottom: 2mm; margin-bottom: 5mm;
   }
-  .obs-row { margin-bottom: 6mm; page-break-inside: avoid; }
-  .obs-label { font-size: 10pt; font-weight: bold; color: #1a1a1a; margin-bottom: 2mm; }
+  .obs-row { margin-bottom: 5mm; page-break-inside: avoid; }
+  .obs-label { font-size: 10pt; font-weight: bold; color: #1a1a1a; margin-bottom: 1.5mm; }
   .obs-valor { font-size: 10pt; color: #1a1a1a; white-space: pre-line; line-height: 1.6; }
   .obs-valor-list { padding-left: 5mm; }
   .obs-valor-list li { margin-bottom: 1.5mm; }
-  .eval-badge {
-    display: inline-block;
-    background: #dcfce7;
-    color: #166534;
-    padding: 2px 12px;
-    border-radius: 4px;
-    font-size: 10pt;
-    font-weight: bold;
-  }
-  .eval-badge-otro {
-    display: inline-block;
-    background: #fee2e2;
-    color: #991b1b;
-    padding: 2px 12px;
-    border-radius: 4px;
-    font-size: 10pt;
-    font-weight: bold;
-  }
+  .eval-badge { display: inline-block; background: #dcfce7; color: #166534; padding: 2px 12px; border-radius: 4px; font-size: 10pt; font-weight: bold; }
+  .eval-badge-otro { display: inline-block; background: #fee2e2; color: #991b1b; padding: 2px 12px; border-radius: 4px; font-size: 10pt; font-weight: bold; }
 
   /* ═══ Detalles del repuesto ═══ */
-  .repuesto-titulo {
-    font-size: 11pt;
-    font-weight: bold;
-    color: #1a1a1a;
-    margin-bottom: 3mm;
-    margin-top: 4mm;
-  }
-  .repuesto-subtitulo { font-size: 10pt; font-weight: bold; color: #1a1a1a; margin-bottom: 2mm; }
+  .repuesto-titulo { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin: 3mm 0 2mm 0; }
+  .repuesto-subtitulo { font-size: 10pt; font-weight: bold; color: #1a1a1a; margin-bottom: 1.5mm; }
   .repuesto-info {
-    font-size: 10pt;
-    color: #1a1a1a;
-    white-space: pre-line;
-    line-height: 1.8;
-    margin-bottom: 4mm;
-    padding: 3mm 4mm;
-    background: #f8fafc;
-    border-left: 3px solid #2563eb;
-    border-radius: 2px;
+    font-size: 10pt; color: #1a1a1a; white-space: pre-line; line-height: 1.8;
+    margin-bottom: 3mm; padding: 3mm 4mm; background: #f8fafc;
+    border-left: 3px solid #2563eb; border-radius: 2px;
   }
-  .repuesto-fotos {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 3mm;
-    margin-top: 2mm;
-  }
+  .repuesto-fotos { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2mm; }
   .repuesto-fotos.una-foto { grid-template-columns: 1fr; }
-  .repuesto-foto-img {
-    width: 100%;
-    max-height: 60mm;
-    object-fit: cover;
-    border: 3px solid #dbeafe;
-    border-radius: 3px;
-    display: block;
-  }
+  .repuesto-foto-img { width: 100%; max-height: 55mm; object-fit: cover; border: 2px solid #dbeafe; border-radius: 3px; display: block; }
 
   /* ═══ Firma ═══ */
   .firma-box {
-    border: 1px solid #d1d5db;
-    border-radius: 3px;
-    padding: 4mm 6mm;
-    display: inline-block;
-    min-width: 75mm;
-    min-height: 30mm;
-    margin-top: 2mm;
+    border: 1px solid #d1d5db; border-radius: 3px; padding: 4mm 6mm;
+    display: inline-block; min-width: 75mm; min-height: 30mm; margin-top: 2mm;
   }
   .firma-img { max-width: 65mm; max-height: 25mm; display: block; }
   .firma-texto { font-size: 7.5pt; color: #6b7280; font-style: italic; margin-top: 2mm; }
+
+  /* ═══ Info de orden / Comentarios / Historial ═══ */
+  .info-section { margin-top: 6mm; page-break-inside: avoid; }
+  .info-section-titulo {
+    font-size: 9pt; font-weight: bold; color: #6b7280; text-transform: uppercase;
+    letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; padding-bottom: 1mm; margin-bottom: 3mm;
+  }
+  .info-campo { font-size: 9pt; color: #374151; margin-bottom: 1.5mm; line-height: 1.5; }
+  .comentario-bloque { margin-bottom: 4mm; }
+  .comentario-texto { font-size: 9pt; color: #1f2937; line-height: 1.5; margin-bottom: 1mm; }
+  .comentario-autor { font-size: 8pt; color: #9ca3af; font-style: italic; }
+  .historial-item { display: flex; gap: 4mm; margin-bottom: 2mm; align-items: flex-start; }
+  .historial-fecha { font-size: 8pt; color: #9ca3af; white-space: nowrap; min-width: 28mm; }
+  .historial-accion { font-size: 9pt; color: #374151; }
+
+  /* ═══ Página firma manual ═══ */
+  .firma-manual-page { page-break-before: always; }
+  .firma-manual-box {
+    margin-top: 20mm;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 12mm;
+  }
+  .firma-manual-linea { width: 80mm; }
+  .firma-manual-label { font-size: 9pt; color: #374151; text-align: right; margin-top: 1mm; }
+  .firma-manual-hr { border: none; border-top: 1px solid #1a1a1a; width: 80mm; }
 </style>
 </head>
 <body>
@@ -299,6 +212,16 @@
   </div>
 </div>
 
+<!-- ═══ SEGUIMIENTO ═══ -->
+{% if data.seguimiento.get('titulo') %}
+<div class="seguimiento-bloque">
+  <div class="seguimiento-titulo">{{ data.seguimiento.titulo }}</div>
+  {% if data.seguimiento.get('contenido') %}
+  <div class="seguimiento-contenido">{{ data.seguimiento.contenido }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
 <!-- ═══ PROCEDIMIENTO ═══ -->
 <div class="procedimiento-bloque">
   {% if data.meta.get('procedimiento') %}
@@ -309,12 +232,11 @@
   <div class="campos-completados">{{ data.meta.campos_completados }} Campos completados</div>
   {% endif %}
 </div>
-
 {% if data.meta.get('fecha_hora_ingreso') %}
 <div class="fecha-line">Fecha y Hora de ingreso: <strong>{{ data.meta.fecha_hora_ingreso }}</strong></div>
 {% endif %}
 
-<!-- ═══ SECCIONES DE INSPECCIÓN ═══ -->
+<!-- ═══ SECCIONES ═══ -->
 {% for seccion in data.secciones %}
 <div class="seccion">
   <div class="seccion-titulo">{{ seccion.nombre }}</div>
@@ -355,11 +277,8 @@
   {% if ef and ef != '-' %}
   <div class="obs-row">
     <div class="obs-label">Evaluación final:</div>
-    {% if ef == 'Operativo' %}
-      <span class="eval-badge">{{ ef }}</span>
-    {% else %}
-      <span class="eval-badge-otro">{{ ef }}</span>
-    {% endif %}
+    {% if ef == 'Operativo' %}<span class="eval-badge">{{ ef }}</span>
+    {% else %}<span class="eval-badge-otro">{{ ef }}</span>{% endif %}
   </div>
   {% endif %}
 
@@ -419,7 +338,7 @@
   </div>
   {% endif %}
 
-  <!-- Firma -->
+  <!-- Firma digital -->
   <div class="obs-row">
     <div class="obs-label">Firma del cliente:</div>
     {% if data.firma.get('data_base64') %}
@@ -441,6 +360,56 @@
     <div class="obs-valor">{{ data.meta.fecha_hora_salida }}</div>
   </div>
   {% endif %}
+
+  <!-- Información de orden de trabajo -->
+  {% if data.info_orden.get('campos') %}
+  <div class="info-section">
+    <div class="info-section-titulo">Información de Orden de Trabajo</div>
+    {% for campo in data.info_orden.campos %}
+    <div class="info-campo">{{ campo }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Comentarios -->
+  {% if data.comentarios %}
+  <div class="info-section">
+    <div class="info-section-titulo">Comentarios</div>
+    {% for c in data.comentarios %}
+    <div class="comentario-bloque">
+      <div class="comentario-texto">{{ c.texto }}</div>
+      {% if c.autor_fecha %}<div class="comentario-autor">{{ c.autor_fecha }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Historial -->
+  {% if data.historial %}
+  <div class="info-section">
+    <div class="info-section-titulo">Historial de Orden de Trabajo</div>
+    {% for h in data.historial %}
+    <div class="historial-item">
+      <div class="historial-fecha">{{ h.fecha }}</div>
+      <div class="historial-accion">{{ h.accion }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ═══ PÁGINA DE FIRMA MANUAL ═══ -->
+<div class="firma-manual-page">
+  <div class="firma-manual-box">
+    <div class="firma-manual-linea">
+      <hr class="firma-manual-hr">
+      <div class="firma-manual-label">Firmado por</div>
+    </div>
+    <div class="firma-manual-linea">
+      <hr class="firma-manual-hr">
+      <div class="firma-manual-label">Fecha</div>
+    </div>
+  </div>
 </div>
 
 </body>
