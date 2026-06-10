@@ -133,7 +133,17 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+import io, base64, re, zipfile, shutil, os, tempfile
+from pathlib import Path
+from docx import Document
+from docx.shared import Cm, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
+    """Inserta imagen a página completa en el encabezado (Header) manipulando el ZIP.
+    Usa coordenadas absolutas (cm) para garantizar que sea 100% estático y no se repita en el PDF."""
     if not os.path.exists(ruta_imagen_png):
         return docx_bytes
 
@@ -146,47 +156,73 @@ def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
         with zipfile.ZipFile(tmp_docx_path, 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
             
-        # 1. Copiar imagen a word/media/bg.png
+        # 1. Copiar imagen a word/media/
         media_dir = os.path.join(extract_dir, 'word', 'media')
         os.makedirs(media_dir, exist_ok=True)
         shutil.copy2(ruta_imagen_png, os.path.join(media_dir, 'bg.png'))
         
-        # 2. Agregar relación en document.xml.rels con string replace
-        rels_path = os.path.join(extract_dir, 'word', '_rels', 'document.xml.rels')
-        with open(rels_path, 'r', encoding='utf-8') as f:
-            rels_data = f.read()
+        # 2. Asegurar que header1.xml.rels tenga la relación de la imagen
+        rels_dir = os.path.join(extract_dir, 'word', '_rels')
+        os.makedirs(rels_dir, exist_ok=True)
+        rels_path = os.path.join(rels_dir, 'header1.xml.rels')
         
-        rel_str = '<Relationship Id="rIdBgWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/bg.png"/>'
-        if 'rIdBgWatermark' not in rels_data:
-            rels_data = rels_data.replace('</Relationships>', f'{rel_str}</Relationships>')
+        rel_str = '<Relationship Id="rIdBgWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/bg.png"/>'
+        
+        if os.path.exists(rels_path):
+            with open(rels_path, 'r', encoding='utf-8') as f:
+                rels_data = f.read()
+            if 'rIdBgWatermark' not in rels_data:
+                rels_data = rels_data.replace('</Relationships>', f'{rel_str}</Relationships>')
+                with open(rels_path, 'w', encoding='utf-8') as f:
+                    f.write(rels_data)
+        else:
             with open(rels_path, 'w', encoding='utf-8') as f:
-                f.write(rels_data)
-        
-        # 3. Agregar <w:background> en document.xml con string replace
-        doc_path = os.path.join(extract_dir, 'word', 'document.xml')
-        with open(doc_path, 'r', encoding='utf-8') as f:
-            doc_data = f.read()
-            
-        if 'xmlns:v="urn:schemas-microsoft-com:vml"' not in doc_data:
-            doc_data = doc_data.replace('<w:document ', '<w:document xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" ')
-            
-        if '<w:background' not in doc_data:
-            bg_str = '<w:background w:color="FFFFFF"><v:background id="_x0000_s1025" o:bwmode="white" o:targetscreensize="1024,768"><v:fill r:id="rIdBgWatermark" o:title="Fondo" type="frame"/></v:background></w:background>'
-            doc_data = doc_data.replace('<w:body>', f'{bg_str}<w:body>')
-            with open(doc_path, 'w', encoding='utf-8') as f:
-                f.write(doc_data)
+                f.write(f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel_str}</Relationships>')
 
-        # 4. Activar displayBackgroundShape en settings.xml con string replace
-        settings_path = os.path.join(extract_dir, 'word', 'settings.xml')
-        if os.path.exists(settings_path):
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                set_data = f.read()
-            if '<w:displayBackgroundShape' not in set_data:
-                set_data = set_data.replace('</w:settings>', '<w:displayBackgroundShape/></w:settings>')
-                with open(settings_path, 'w', encoding='utf-8') as f:
-                    f.write(set_data)
-        
-        # 5. Reempaquetar ZIP con zipfile
+        # 3. Inyectar en header1.xml usando string replace seguro
+        hdr_path = os.path.join(extract_dir, 'word', 'header1.xml')
+        if os.path.exists(hdr_path):
+            with open(hdr_path, 'r', encoding='utf-8') as f:
+                hdr_data = f.read()
+                
+            # Asegurar namespaces VML requeridos
+            if 'xmlns:v="urn:schemas-microsoft-com:vml"' not in hdr_data:
+                hdr_data = hdr_data.replace('<w:hdr ', '<w:hdr xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" ')
+                
+            # String VML con ancho 21cm x 29.7cm forzado, anclado al centro de la página de forma absoluta.
+            vml_shape = (
+                '<w:r>'
+                '<w:pict>'
+                '<v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f">'
+                '<v:stroke joinstyle="miter"/>'
+                '<v:formulas><v:f eqn="if lineDrawn pixelLineWidth 0"/><v:f eqn="sum @0 1 0"/><v:f eqn="sum 0 0 @1"/><v:f eqn="prod @2 1 2"/><v:f eqn="prod @3 21600 pixelWidth"/><v:f eqn="prod @3 21600 pixelHeight"/><v:f eqn="sum @0 0 1"/><v:f eqn="prod @6 1 2"/><v:f eqn="prod @7 21600 pixelWidth"/><v:f eqn="sum @8 21600 0"/><v:f eqn="prod @7 21600 pixelHeight"/><v:f eqn="sum @10 21600 0"/></v:formulas>'
+                '<v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/>'
+                '<o:lock v:ext="edit" aspectratio="t"/>'
+                '</v:shapetype>'
+                '<v:shape id="WaterMark" o:spid="_x0000_s1025" type="#_x0000_t75" '
+                'style="position:absolute;left:0;top:0;width:21cm;height:29.7cm;z-index:-251658240;'
+                'mso-position-horizontal:center;mso-position-horizontal-relative:page;'
+                'mso-position-vertical:center;mso-position-vertical-relative:page" o:allowincell="f">'
+                '<v:imagedata r:id="rIdBgWatermark" o:title="Fondo"/>'
+                '</v:shape>'
+                '</w:pict>'
+                '</w:r>'
+            )
+            
+            # Párrafo independiente sin márgenes para evitar distorsiones
+            vml_p = f'<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:ind w:left="0" w:right="0"/></w:pPr>{vml_shape}</w:p>'
+            
+            if 'rIdBgWatermark' not in hdr_data:
+                # Inyectar al final del encabezado
+                if '</w:pPr>' in hdr_data:
+                    hdr_data = hdr_data.replace('</w:pPr>', f'</w:pPr>{vml_p}', 1)
+                else:
+                    hdr_data = hdr_data.replace('</w:p>', f'{vml_p}</w:p>', 1)
+                    
+                with open(hdr_path, 'w', encoding='utf-8') as f:
+                    f.write(hdr_data)
+
+        # 4. Reempaquetar ZIP
         final_docx_path = os.path.join(tmpdir, 'final.docx')
         with zipfile.ZipFile(final_docx_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(extract_dir):
@@ -242,6 +278,10 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     seccion.left_margin = Cm(1.5)
     seccion.right_margin = Cm(1.5)
     
+    # Generar encabezado vacío para forzar a python-docx a crear header1.xml
+    hdr = seccion.header
+    hdr.paragraphs[0].text = ""
+
     AZUL_LINK = RGBColor(0x25, 0x63, 0xEB)
     GRIS_ETIQUETA = RGBColor(0x6B, 0x72, 0x80)
     NEGRO_VALOR = RGBColor(0x00, 0x00, 0x00)
@@ -267,6 +307,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
     c0 = tbl_top.cell(0, 0)
     c0.width = Cm(1.8) 
     tbl_top.columns[0].width = Cm(1.8)
+    # Se eliminó el fondo negro
     set_cell_border(c0, top={"val": "nil"}, bottom={"val": "nil"}, left={"val": "nil"}, right={"val": "nil"})
     
     p0 = c0.paragraphs[0]
