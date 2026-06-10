@@ -165,6 +165,22 @@ from docx.oxml.ns import qn
 
 
 
+import io, base64, re, zipfile, shutil, os, tempfile
+
+from pathlib import Path
+
+from docx import Document
+
+from docx.shared import Cm, Pt, RGBColor
+
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from docx.oxml import OxmlElement
+
+from docx.oxml.ns import qn
+
+
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
 
     """Inserta imagen a página completa en el encabezado (Header) manipulando el ZIP.
@@ -439,7 +455,7 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     seccion.page_width = Cm(21.0)
 
-    seccion.top_margin = Cm(4.5)
+    seccion.top_margin = Cm(3.8)
 
     seccion.bottom_margin = Cm(3.5)
 
@@ -505,11 +521,11 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     tbl_top.columns[0].width = Cm(0.8)
 
-    TOP_LOGO = BASE_DIR / "template" / "assets" / "Logo_Word.png"
+TOP_LOGO = BASE_DIR / "template" / "assets" / "Logo_Word.png"
     p0 = c0.paragraphs[0]
     p0.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if TOP_LOGO.exists():
-        p0.add_run().add_picture(str(TOP_LOGO), width=Cm(0.8))
+        p0.add_run().add_picture(str(TOP_LOGO), width=Cm(1.5))
     else:
         r0 = p0.add_run("N")
         r0.font.bold = True
