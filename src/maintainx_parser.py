@@ -280,6 +280,18 @@ def parse_pdf(pdf_bytes):
                 if re.match(r"^Fotos del repuesto a reparar", text, re.I):
                     pending_label = "fotos_repuesto"
                     i += 1; continue
+                # Si en una nueva página aparecen directamente las etiquetas
+                # de Observaciones (sin el encabezado bold "Observaciones y
+                # Recomendaciones" repetido), volver a OBSERVATIONS y procesar
+                if text in (
+                    "Observaciones y Recomendaciones para cliente:",
+                    "Observaciones para CHG Ascensores:",
+                    "Fecha y Hora de salida:",
+                    "Evaluación final:",
+                ) or re.match(r"^Firmado por .+", text) or text == "INFORMACIÓN DE ORDEN DE TRABAJO":
+                    state = "OBSERVATIONS"
+                    pending_label = None
+                    continue  # reprocesar esta línea en estado OBSERVATIONS
                 if pending_label == "info_tecnica":
                     dr = obs["detalles_repuesto"]
                     dr["info_tecnica"] = (dr["info_tecnica"] + "\n" + text).strip("\n")
