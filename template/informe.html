@@ -101,9 +101,9 @@
     margin-bottom: 3mm; padding: 3mm 4mm; background: #f8fafc;
     border-left: 3px solid #2563eb; border-radius: 2px;
   }
-  .repuesto-fotos { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2mm; }
-  .repuesto-fotos.una-foto { grid-template-columns: 1fr; }
-  .repuesto-foto-img { width: 100%; max-height: 55mm; object-fit: cover; border: 2px solid #dbeafe; border-radius: 3px; display: block; }
+  .repuesto-fotos { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 2mm; }
+  .repuesto-fotos.una-foto .repuesto-foto-img { width: 100%; }
+  .repuesto-foto-img { width: calc(50% - 1.5mm); max-height: 38mm; object-fit: cover; border: 2px solid #dbeafe; border-radius: 3px; display: block; }
 
   /* ═══ Firma ═══ */
   .firma-box {
@@ -287,17 +287,18 @@
   {% set dr_info = dr.get('info_tecnica', '') %}
   {% set dr_fotos = dr.get('fotos', []) %}
   {% if dr_info or dr_fotos %}
-  <div class="obs-row">
-    <div class="repuesto-titulo">Detalles del repuesto a reparar o cambiar</div>
+  <div class="obs-row" style="page-break-inside: auto; break-inside: auto;">
+    <div class="repuesto-titulo" style="break-after: auto; page-break-after: auto;">Detalles del repuesto a reparar o cambiar</div>
     {% if dr_info %}
       <div class="repuesto-subtitulo">Información de repuesto (medidas, datos técnicos):</div>
-      <div class="repuesto-info">{{ dr_info }}</div>
+      <div class="repuesto-info" style="page-break-inside: auto; break-inside: auto;">{{ dr_info }}</div>
     {% endif %}
     {% if dr_fotos %}
       <div class="repuesto-subtitulo">Fotos del repuesto a reparar:</div>
-      <div class="repuesto-fotos {% if dr_fotos|length == 1 %}una-foto{% endif %}">
+      <div class="repuesto-fotos {% if dr_fotos|length == 1 %}una-foto{% endif %}" style="page-break-inside: auto; break-inside: auto;">
         {% for foto in dr_fotos %}
           <img class="repuesto-foto-img"
+               style="page-break-inside: avoid; break-inside: avoid;"
                src="data:image/{{ foto.get('ext', 'jpeg') }};base64,{{ foto.data_base64 }}"
                alt="Foto repuesto">
         {% endfor %}
