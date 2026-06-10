@@ -38,7 +38,13 @@ MEMBRETE_PATH = BASE_DIR / "template" / "assets" / "membrete.png"
 def html_to_pdf(html_bytes: bytes) -> bytes:
     """Renderiza HTML a PDF usando Chromium headless."""
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(args=[
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--single-process",
+            "--disable-extensions",
+        ])
         page = browser.new_page()
         page.set_content(html_bytes.decode("utf-8"), wait_until="networkidle")
         pdf = page.pdf(
