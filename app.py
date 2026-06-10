@@ -181,6 +181,22 @@ from docx.oxml.ns import qn
 
 
 
+import io, base64, re, zipfile, shutil, os, tempfile
+
+from pathlib import Path
+
+from docx import Document
+
+from docx.shared import Cm, Pt, RGBColor
+
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from docx.oxml import OxmlElement
+
+from docx.oxml.ns import qn
+
+
+
 def aplicar_fondo_pagina(docx_bytes, ruta_imagen_png):
 
     """Inserta imagen a página completa en el encabezado (Header) manipulando el ZIP.
@@ -517,11 +533,11 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
     c0 = tbl_top.cell(0, 0)
 
-    c0.width = Cm(1.8)
+    c0.width = Cm(0.8)
 
-    tbl_top.columns[0].width = Cm(1.8)
+    tbl_top.columns[0].width = Cm(0.8)
 
-    TOP_LOGO = BASE_DIR / "template" / "assets" / "Logo_Word.png"
+TOP_LOGO = BASE_DIR / "template" / "assets" / "Logo_Word.png"
     p0 = c0.paragraphs[0]
     p0.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if TOP_LOGO.exists():
@@ -958,8 +974,25 @@ def generar_docx_con_observaciones(data, observaciones_extra):
 
 
 
-    buf = io.BytesIO()
+# PIE DE PÁGINA
+    ftr = seccion.footer
+    p_ftr = ftr.paragraphs[0]
+    p_ftr.paragraph_format.space_before = Pt(4)
+    from docx.oxml.ns import qn as _qn
+    from docx.oxml import OxmlElement as _OxmlEl
+    pPr = p_ftr._p.get_or_add_pPr()
+    pBdr = _OxmlEl('w:pBdr')
+    top = _OxmlEl('w:top')
+    top.set(_qn('w:val'), 'single')
+    top.set(_qn('w:sz'), '6')
+    top.set(_qn('w:color'), '6B7280')
+    pBdr.append(top)
+    pPr.append(pBdr)
+    r_ftr = p_ftr.add_run("Generado para CHG Ascensores")
+    r_ftr.font.size = Pt(9)
+    r_ftr.font.color.rgb = GRIS_ETIQUETA
 
+    buf = io.BytesIO()
     doc.save(buf)
 
     buf.seek(0)
