@@ -359,3 +359,541 @@ UI = """<!DOCTYPE html>
       Generar informe(s) membretado(s)
     </button>
   </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <div class="step">2</div>
+      Descargar informe
+    </div>
+
+    <div class="result-empty" id="resultEmpty">
+      <div class="icon">📋</div>
+      <p>El/los informe(s) membretado(s) aparecerán aquí<br>una vez que subas y proceses el/los PDF.</p>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loadingText">Procesando PDF…</div>
+      <div class="loading-sub">Parseando datos y generando informe</div>
+    </div>
+
+    <div class="result-card" id="resultCard">
+      <div class="result-badge" id="resultBadge"></div>
+
+      <div class="result-meta" id="resultMeta"></div>
+
+      <a class="btn-download" id="btnDownload" href="#" download>
+        ⬇️ Descargar informe
+      </a>
+
+      <button class="btn-drive" id="btnDrive">
+        📤 Subir aprobados a Drive
+      </button>
+      <div class="drive-status" id="driveStatus"></div>
+
+      <button class="btn-reset" id="btnReset">Procesar otro(s) PDF</button>
+    </div>
+  </div>
+</main>
+
+<footer>CHG Ascensores · Informes Membretados</footer>
+
+<script>
+  const dropZone    = document.getElementById('dropZone');
+  const fileInput   = document.getElementById('fileInput');
+  const fileList    = document.getElementById('fileList');
+  const btnGenerate = document.getElementById('btnGenerate');
+
+  const resultEmpty   = document.getElementById('resultEmpty');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText   = document.getElementById('loadingText');
+  const resultCard    = document.getElementById('resultCard');
+  const resultBadge   = document.getElementById('resultBadge');
+  const resultMeta    = document.getElementById('resultMeta');
+  const btnDownload   = document.getElementById('btnDownload');
+  const btnDrive      = document.getElementById('btnDrive');
+  const driveStatus   = document.getElementById('driveStatus');
+  const btnReset      = document.getElementById('btnReset');
+
+  let selectedFiles = [];
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/1024/1024).toFixed(1) + ' MB';
+  }
+
+  function renderFileList() {
+    fileList.innerHTML = selectedFiles.map((file, idx) => `
+      <div class="file-item">
+        <span>📎</span>
+        <span class="fname">${file.name}</span>
+        <span class="fsize">${fmtSize(file.size)}</span>
+        <button class="remove-btn" data-idx="${idx}" title="Quitar archivo">✕</button>
+      </div>
+    `).join('');
+
+    if (selectedFiles.length > 1) {
+      fileList.innerHTML += `<div class="file-list-summary">${selectedFiles.length} archivos seleccionados</div>`;
+    }
+
+    fileList.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        selectedFiles.splice(idx, 1);
+        renderFileList();
+        updateGenerateState();
+      });
+    });
+  }
+
+  function updateGenerateState() {
+    btnGenerate.disabled = selectedFiles.length === 0;
+    resetResult();
+  }
+
+  function addFiles(fileListInput) {
+    let rejected = false;
+    for (const file of fileListInput) {
+      if (file.type !== 'application/pdf') {
+        rejected = true;
+        continue;
+      }
+      selectedFiles.push(file);
+    }
+    if (rejected) {
+      alert('Solo se admiten archivos PDF. Se ignoraron los archivos que no lo son.');
+    }
+    renderFileList();
+    updateGenerateState();
+  }
+
+  function resetFiles() {
+    selectedFiles = [];
+    fileInput.value = '';
+    renderFileList();
+    updateGenerateState();
+  }
+
+  function resetResult() {
+    resultCard.classList.remove('show');
+    loadingOverlay.classList.remove('show');
+    resultEmpty.style.display = '';
+    if (driveStatus) { driveStatus.textContent = ''; driveStatus.className = 'drive-status'; }
+  }
+
+  function showLoading() {
+    resultEmpty.style.display = 'none';
+    resultCard.classList.remove('show');
+    loadingOverlay.classList.add('show');
+    if (selectedFiles.length > 1) {
+      loadingText.textContent = `Procesando ${selectedFiles.length} PDFs…`;
+    } else {
+      loadingText.textContent = 'Procesando PDF…';
+    }
+  }
+
+  function metaGridHtml(m) {
+    return [
+      ['N° de orden', '#' + (m.numero_orden || '—')],
+      ['Estado',      m.estado || '—'],
+      ['Ubicación',   m.ubicacion || '—'],
+      ['Activo',      m.activo || '—'],
+      ['Asignados',   (m.asignados || []).join(', ') || '—'],
+    ].map(([l, v]) => `
+        <div>
+          <div class="item-label">${l}</div>
+          <div class="item-value">${v}</div>
+        </div>`).join('');
+  }
+
+  // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
+  let carouselSlides = [];   // array de strings HTML, una por archivo
+  let carouselIndex  = 0;
+  let approvedIds    = new Set();   // file_id de tarjetas marcadas "Aprobado"
+
+  function renderCarousel() {
+    const total = carouselSlides.length;
+    if (total === 0) {
+      resultMeta.innerHTML = '';
+      return;
+    }
+    if (carouselIndex < 0) carouselIndex = 0;
+    if (carouselIndex > total - 1) carouselIndex = total - 1;
+
+    resultMeta.innerHTML = `
+      <div class="carousel">
+        <div class="carousel-track">
+          <button class="carousel-arrow" id="carouselPrev" ${carouselIndex === 0 ? 'disabled' : ''} title="Anterior">‹</button>
+          <div class="carousel-slide">${carouselSlides[carouselIndex]}</div>
+          <button class="carousel-arrow" id="carouselNext" ${carouselIndex === total - 1 ? 'disabled' : ''} title="Siguiente">›</button>
+        </div>
+        <div class="carousel-pagination">${carouselIndex + 1} / ${total}</div>
+      </div>
+    `;
+
+    const prevBtn = document.getElementById('carouselPrev');
+    const nextBtn = document.getElementById('carouselNext');
+    if (prevBtn) prevBtn.addEventListener('click', () => { carouselIndex--; renderCarousel(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { carouselIndex++; renderCarousel(); });
+
+    const approveCb = document.getElementById('approveCheckbox');
+    if (approveCb) {
+      approveCb.addEventListener('change', () => {
+        const fid = approveCb.dataset.fileId;
+        if (approveCb.checked) approvedIds.add(fid);
+        else approvedIds.delete(fid);
+        updateDriveButtonState();
+      });
+    }
+  }
+
+  function approveCheckboxHtml(fileId) {
+    if (!fileId) return '';
+    const checked = approvedIds.has(fileId) ? 'checked' : '';
+    return `
+      <label class="approve-row" style="grid-column: 1 / -1;">
+        <input type="checkbox" id="approveCheckbox" data-file-id="${fileId}" ${checked}>
+        Aprobado para subir a Drive
+      </label>`;
+  }
+
+  function updateDriveButtonState() {
+    btnDrive.disabled = approvedIds.size === 0;
+    btnDrive.textContent = approvedIds.size > 0
+      ? `📤 Subir ${approvedIds.size} aprobado(s) a Drive`
+      : '📤 Subir aprobados a Drive';
+    driveStatus.textContent = '';
+    driveStatus.className = 'drive-status';
+  }
+
+  function showResult(data) {
+    loadingOverlay.classList.remove('show');
+    resultCard.classList.add('show');
+    carouselSlides = [];
+    carouselIndex = 0;
+    approvedIds = new Set();
+    btnDrive.style.display = '';
+    updateDriveButtonState();
+
+    if (data.ok) {
+      if (data.multi) {
+        const errCount = (data.errors || []).length;
+        if (errCount > 0) {
+          resultBadge.className = 'result-badge warning';
+          resultBadge.innerHTML = `✅ ${data.count} informe(s) generado(s), ${errCount} con error`;
+        } else {
+          resultBadge.className = 'result-badge success';
+          resultBadge.innerHTML = `✅ ${data.count} informes generados correctamente`;
+        }
+      } else {
+        resultBadge.className = 'result-badge success';
+        resultBadge.innerHTML = '✅ Informe generado correctamente';
+      }
+    } else {
+      resultBadge.className = 'result-badge error';
+      resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
+      btnDownload.style.display = 'none';
+      btnDrive.style.display = 'none';
+      if (data.errors && data.errors.length) {
+        carouselSlides = data.errors.map(e => `
+          <div class="result-meta-card error">
+            <div class="card-title">${e.archivo}</div>
+            <div class="item-value">${e.error}</div>
+          </div>`);
+      }
+      renderCarousel();
+      return;
+    }
+
+    btnDownload.style.display = '';
+    btnDownload.href = data.download_url;
+    btnDownload.download = data.filename;
+    btnDownload.innerHTML = data.multi
+      ? '⬇️ Descargar .zip con informes membretados'
+      : '⬇️ Descargar PDF membretado';
+
+    if (data.multi) {
+      carouselSlides = (data.items || []).map(item => {
+        const m = item.meta || {};
+        const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
+        return `
+          <div class="result-meta-card">
+            <div class="card-title">${titulo}</div>
+            <div class="card-grid">${metaGridHtml(m)}</div>
+            ${approveCheckboxHtml(item.file_id)}
+          </div>`;
+      });
+
+      if (data.errors && data.errors.length) {
+        carouselSlides = carouselSlides.concat(data.errors.map(e => `
+          <div class="result-meta-card error">
+            <div class="card-title">⚠️ ${e.archivo}</div>
+            <div class="item-value">${e.error}</div>
+          </div>`));
+      }
+
+      renderCarousel();
+    } else {
+      resultMeta.innerHTML = metaGridHtml(data.meta || {})
+        + approveCheckboxHtml(data.file_id);
+      const approveCb = document.getElementById('approveCheckbox');
+      if (approveCb) {
+        approveCb.addEventListener('change', () => {
+          const fid = approveCb.dataset.fileId;
+          if (approveCb.checked) approvedIds.add(fid);
+          else approvedIds.delete(fid);
+          updateDriveButtonState();
+        });
+      }
+    }
+  }
+
+  // Drag & drop
+  ['dragenter','dragover'].forEach(evt =>
+    dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('over'); })
+  );
+  ['dragleave','drop'].forEach(evt =>
+    dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('over'); })
+  );
+  dropZone.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  btnReset.addEventListener('click', () => {
+    resetFiles();
+  });
+
+  btnGenerate.addEventListener('click', async () => {
+    if (!selectedFiles.length) return;
+    showLoading();
+    btnGenerate.disabled = true;
+
+    const form = new FormData();
+    selectedFiles.forEach(file => form.append('pdf', file));
+    form.append('observaciones', document.getElementById('observaciones').value.trim());
+
+    try {
+      const resp = await fetch('/generate', { method: 'POST', body: form });
+      const data = await resp.json();
+      showResult(data);
+    } catch (err) {
+      showResult({ error: 'Error de red: ' + err.message });
+    } finally {
+      btnGenerate.disabled = false;
+    }
+  });
+
+  btnDrive.addEventListener('click', async () => {
+    if (approvedIds.size === 0) return;
+    btnDrive.disabled = true;
+    driveStatus.className = 'drive-status';
+    driveStatus.textContent = '⏳ Subiendo a Drive…';
+
+    try {
+      const resp = await fetch('/upload-to-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: Array.from(approvedIds) }),
+      });
+      const data = await resp.json();
+
+      if (resp.status === 501) {
+        driveStatus.className = 'drive-status error';
+        driveStatus.textContent = '⚠️ ' + data.error;
+      } else if (data.ok) {
+        driveStatus.className = 'drive-status ok';
+        driveStatus.textContent = `✅ ${data.results.length} archivo(s) subido(s) a Drive correctamente.`;
+      } else {
+        const failed = (data.results || []).filter(r => !r.ok);
+        driveStatus.className = 'drive-status error';
+        driveStatus.textContent = `⚠️ ${failed.length} archivo(s) fallaron: `
+          + failed.map(f => `${f.filename || f.file_id} (${f.error})`).join(', ');
+      }
+    } catch (err) {
+      driveStatus.className = 'drive-status error';
+      driveStatus.textContent = '❌ Error de red: ' + err.message;
+    } finally {
+      btnDrive.disabled = approvedIds.size === 0;
+    }
+  });
+</script>
+</body>
+</html>"""
+
+@app.route("/")
+def index():
+    return render_template_string(UI)
+
+_pdf_store: dict = {}
+
+def process_one_pdf(pdf_bytes: bytes):
+    """Procesa un PDF mediante estampado (Overlay) directamente con PyMuPDF."""
+    
+    with open(MEMBRETE_PATH, "rb") as f:
+        membrete_bytes = f.read()
+
+    try:
+        data = parse_pdf(pdf_bytes, membrete_bytes)
+    except Exception as exc:
+        raise RuntimeError(f"Error al procesar el PDF: {exc}")
+
+    pdf_out = data["stamped_pdf_bytes"]
+    numero   = data.get("meta", {}).get("numero_orden", "informe")
+    filename = f"informe-{numero}.pdf"
+    
+    return filename, pdf_out, data.get("meta", {})
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    files = request.files.getlist("pdf")
+    if not files:
+        return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
+
+    import hashlib, time, zipfile
+
+    if len(files) == 1:
+        original_name = files[0].filename or "archivo.pdf"
+        pdf_bytes = files[0].read()
+        if not pdf_bytes:
+            return jsonify({"error": "El archivo está vacío."}), 400
+
+        try:
+            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 500
+
+        file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
+        _pdf_store[file_id] = (filename, pdf_out, original_name)
+
+        return jsonify({
+            "ok":           True,
+            "multi":        False,
+            "meta":         meta,
+            "filename":     filename,
+            "file_id":      file_id,
+            "download_url": f"/download/{file_id}",
+        })
+
+    results = []   
+    items   = []   
+    errors  = []   
+
+    for f in files:
+        original_name = f.filename or "archivo.pdf"
+        pdf_bytes = f.read()
+        if not pdf_bytes:
+            errors.append({"archivo": original_name, "error": "Archivo vacío"})
+            continue
+        try:
+            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+            base, ext = os.path.splitext(filename)
+            candidate = filename
+            n = 1
+            existentes = {r[0] for r in results}
+            while candidate in existentes:
+                candidate = f"{base}_{n}{ext}"
+                n += 1
+            results.append((candidate, pdf_out))
+            individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
+            _pdf_store[individual_id] = (candidate, pdf_out, original_name)
+            items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
+        except RuntimeError as exc:
+            errors.append({"archivo": original_name, "error": str(exc)})
+
+    if not results:
+        return jsonify({
+            "ok":     False,
+            "error":  "No se pudo procesar ningún archivo.",
+            "errors": errors,
+        }), 500
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, pdf_bytes_ in results:
+            zf.writestr(fname, pdf_bytes_)
+    zip_buf.seek(0)
+
+    zip_filename = f"informes-membretados-{int(time.time())}.zip"
+    file_id = hashlib.md5(f"{zip_filename}{time.time()}".encode()).hexdigest()[:12]
+    _pdf_store[file_id] = (zip_filename, zip_buf.getvalue(), zip_filename)
+
+    return jsonify({
+        "ok":           True,
+        "multi":        True,
+        "count":        len(results),
+        "items":        items,
+        "errors":       errors,
+        "filename":     zip_filename,
+        "download_url": f"/download/{file_id}",
+    })
+
+@app.route("/download/<file_id>")
+def download(file_id):
+    if file_id not in _pdf_store:
+        return "Archivo no encontrado o expirado.", 404
+    filename, file_bytes, _ = _pdf_store[file_id]
+    mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
+    return send_file(
+        io.BytesIO(file_bytes),
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=filename,
+    )
+
+@app.route("/upload-to-drive", methods=["POST"])
+def upload_to_drive():
+    webhook_url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        return jsonify({
+            "ok": False,
+            "error": "La integración con n8n aún no está configurada (falta la variable N8N_WEBHOOK_URL).",
+        }), 501
+
+    payload = request.get_json(silent=True) or {}
+    file_ids = payload.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"ok": False, "error": "No se indicó ningún archivo aprobado."}), 400
+
+    import requests
+
+    results = []
+    for fid in file_ids:
+        if fid not in _pdf_store:
+            results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
+            continue
+
+        filename, file_bytes, original_name = _pdf_store[fid]
+        try:
+            resp = requests.post(
+                webhook_url,
+                files={"data": (original_name, file_bytes, "application/pdf")},
+                data={"filename": original_name},
+                timeout=60,
+            )
+            if resp.ok:
+                results.append({"file_id": fid, "filename": original_name, "ok": True})
+            else:
+                results.append({
+                    "file_id": fid, "filename": original_name, "ok": False,
+                    "error": f"n8n respondió con estado {resp.status_code}",
+                })
+        except Exception as exc:
+            results.append({"file_id": fid, "filename": original_name, "ok": False, "error": str(exc)})
+
+    all_ok = all(r["ok"] for r in results)
+    return jsonify({"ok": all_ok, "results": results})
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print("\n  CHG Informe Membretado")
+    print("  -------------------------------------")
+    print(f"  Servidor:  http://localhost:{port}")
+    print("  Motor PDF: Estampado Directo (PyMuPDF)")
+    print("  -------------------------------------\n")
+    app.run(host="0.0.0.0", port=port, debug=True)
