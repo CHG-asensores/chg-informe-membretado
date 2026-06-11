@@ -1,6 +1,5 @@
 """
 Parser de PDFs exportados por MaintainX para CHG Ascensores.
-Requisitos: pip install pymupdf
 """
 import base64, re
 import fitz  # PyMuPDF
@@ -37,11 +36,10 @@ def get_image_positions(page):
 
 def parse_pdf(pdf_bytes):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-
-    meta      = {}
+    meta = {}
     secciones = []
-    fotos     = []
-    obs       = {
+    fotos = []
+    obs = {
         "evaluacion_final": "",
         "para_cliente": "",
         "para_chg": "",
@@ -49,9 +47,9 @@ def parse_pdf(pdf_bytes):
     }
     firma = {"data_base64": "", "texto": ""}
     seguimiento = {"titulo": "", "contenido": ""}
-    info_orden  = {"campos": []}
+    info_orden = {"campos": []}
     comentarios = []
-    historial   = []
+    historial = []
 
     for block in doc[0].get_text("dict")["blocks"]:
         if block.get("type") != 0: continue
@@ -71,12 +69,12 @@ def parse_pdf(pdf_bytes):
     }
     SKIP_LINES = {"CHG Ascensores", "Campos completados", "* Indica que la pregunta es obligatoria"}
 
-    state            = "HEADER"
-    current_section  = None
-    pending_label    = None
-    pending_left     = None
-    pending_right    = None
-    COL_THRESHOLD    = 180
+    state = "HEADER"
+    current_section = None
+    pending_label = None
+    pending_left = None
+    pending_right = None
+    COL_THRESHOLD = 180
     campos_esperados = 0
     campos_parseados = 0
     valores_invalidos = []
@@ -92,8 +90,8 @@ def parse_pdf(pdf_bytes):
 
         i = 0
         while i < len(lines):
-            entry   = lines[i]
-            text    = entry["text"]
+            entry = lines[i]
+            text = entry["text"]
             is_bold = entry["bold"]
 
             if text in SKIP_LINES:
@@ -115,8 +113,8 @@ def parse_pdf(pdf_bytes):
                     state = "SECTIONS"
                     pending_left = pending_right = None
                     continue
-
-                # --- NUEVO: Disparador para la Orden #488 y similares ---
+                    
+                # --- NUEVO: Disparador para la Orden #488 ---
                 if text in ["INFORME DE MANTENIMIENTO PREVENTIVO", "Limpieza general"]:
                     state = "SECTIONS"
                     pending_left = pending_right = None
@@ -128,8 +126,8 @@ def parse_pdf(pdf_bytes):
                 pending = pending_left if col_is_left else pending_right
 
                 if text in HEADER_LABELS:
-                    if col_is_left: pending_left  = HEADER_LABELS[text]
-                    else:           pending_right = HEADER_LABELS[text]
+                    if col_is_left: pending_left = HEADER_LABELS[text]
+                    else: pending_right = HEADER_LABELS[text]
                     i += 1; continue
 
                 if pending:
@@ -143,20 +141,20 @@ def parse_pdf(pdf_bytes):
                         if "ubicacion" not in meta: meta["ubicacion"] = text
                         else:
                             meta.setdefault("direccion", text)
-                            if col_is_left: pending_left  = None
-                            else:           pending_right = None
+                            if col_is_left: pending_left = None
+                            else: pending_right = None
                     elif pending == "activo":
                         if "activo" not in meta: meta["activo"] = text
                         else:
                             if not re.match(r"^\d+$", text): meta["activo"] += " " + text
                     elif pending == "procedimiento":
                         meta["procedimiento"] = text
-                        if col_is_left: pending_left  = None
-                        else:           pending_right = None
+                        if col_is_left: pending_left = None
+                        else: pending_right = None
                     else:
                         meta[pending] = text
-                        if col_is_left: pending_left  = None
-                        else:           pending_right = None
+                        if col_is_left: pending_left = None
+                        else: pending_right = None
                     i += 1; continue
 
             elif state == "SECTIONS":
