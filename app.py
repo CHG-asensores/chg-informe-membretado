@@ -22,7 +22,7 @@ from maintainx_parser import parse_pdf
 from render_html import render_html
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024  # 150 MB (varios PDFs)
 
 BASE_DIR      = Path(__file__).parent
 TEMPLATE_PATH = BASE_DIR / "template" / "informe.html"
@@ -175,24 +175,25 @@ UI = """<!DOCTYPE html>
     .drop-text { font-size: 15px; font-weight: 500; color: #334155; margin-bottom: 6px; }
     .drop-hint { font-size: 13px; color: #94a3b8; }
 
-    .file-info {
-      display: none;
+    .file-list { display: flex; flex-direction: column; gap: 8px; }
+    .file-item {
+      display: flex;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
-      padding: 12px 16px;
+      padding: 10px 14px;
       font-size: 14px;
       color: #334155;
       align-items: center;
       gap: 10px;
     }
-    .file-info.show { display: flex; }
-    .file-info .fname { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .file-info .fsize { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
-    .file-info .remove-btn {
+    .file-item .fname { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .fsize { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
+    .file-item .remove-btn {
       background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 18px; line-height: 1; padding: 0 2px;
     }
-    .file-info .remove-btn:hover { color: #ef4444; }
+    .file-item .remove-btn:hover { color: #ef4444; }
+    .file-list-summary { font-size: 12px; color: #94a3b8; padding: 0 2px; }
 
     .btn-generate {
       background: #1a1a2e;
@@ -245,6 +246,7 @@ UI = """<!DOCTYPE html>
     }
     .result-badge.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
     .result-badge.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .result-badge.warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
 
     .result-meta {
       background: #f8fafc;
@@ -337,27 +339,22 @@ UI = """<!DOCTYPE html>
   <div class="panel">
     <div class="panel-title">
       <div class="step">1</div>
-      Subir PDF de MaintainX
+      Subir PDF(s) de MaintainX
     </div>
 
     <div class="drop-zone" id="dropZone">
-      <input type="file" id="fileInput" accept=".pdf">
+      <input type="file" id="fileInput" accept=".pdf" multiple>
       <div class="drop-icon">📄</div>
-      <div class="drop-text">Arrastrá el PDF aquí</div>
+      <div class="drop-text">Arrastrá uno o más PDF aquí</div>
       <div class="drop-hint">o hacé clic para seleccionar</div>
     </div>
 
-    <div class="file-info" id="fileInfo">
-      <span>📎</span>
-      <span class="fname" id="fileName"></span>
-      <span class="fsize" id="fileSize"></span>
-      <button class="remove-btn" id="removeBtn" title="Quitar archivo">✕</button>
-    </div>
+    <div class="file-list" id="fileList"></div>
 
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
-      Generar informe membretado
+      Generar informe(s) membretado(s)
     </button>
   </div>
 
@@ -370,12 +367,12 @@ UI = """<!DOCTYPE html>
 
     <div class="result-empty" id="resultEmpty">
       <div class="icon">📋</div>
-      <p>El informe membretado aparecerá aquí<br>una vez que subas y proceses el PDF.</p>
+      <p>El/los informe(s) membretado(s) aparecerán aquí<br>una vez que subas y proceses el/los PDF.</p>
     </div>
 
     <div class="loading-overlay" id="loadingOverlay">
       <div class="spinner"></div>
-      <div class="loading-text">Procesando PDF…</div>
+      <div class="loading-text" id="loadingText">Procesando PDF…</div>
       <div class="loading-sub">Parseando datos y generando informe</div>
     </div>
 
@@ -385,10 +382,10 @@ UI = """<!DOCTYPE html>
       <div class="result-meta" id="resultMeta"></div>
 
       <a class="btn-download" id="btnDownload" href="#" download>
-        ⬇️ Descargar PDF membretado
+        ⬇️ Descargar informe
       </a>
 
-      <button class="btn-reset" id="btnReset">Procesar otro PDF</button>
+      <button class="btn-reset" id="btnReset">Procesar otro(s) PDF</button>
     </div>
   </div>
 </main>
@@ -398,21 +395,19 @@ UI = """<!DOCTYPE html>
 <script>
   const dropZone    = document.getElementById('dropZone');
   const fileInput   = document.getElementById('fileInput');
-  const fileInfo    = document.getElementById('fileInfo');
-  const fileName    = document.getElementById('fileName');
-  const fileSize    = document.getElementById('fileSize');
-  const removeBtn   = document.getElementById('removeBtn');
+  const fileList    = document.getElementById('fileList');
   const btnGenerate = document.getElementById('btnGenerate');
 
   const resultEmpty   = document.getElementById('resultEmpty');
   const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText   = document.getElementById('loadingText');
   const resultCard    = document.getElementById('resultCard');
   const resultBadge   = document.getElementById('resultBadge');
   const resultMeta    = document.getElementById('resultMeta');
   const btnDownload   = document.getElementById('btnDownload');
   const btnReset      = document.getElementById('btnReset');
 
-  let selectedFile = null;
+  let selectedFiles = [];
 
   function fmtSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -420,27 +415,61 @@ UI = """<!DOCTYPE html>
     return (bytes/1024/1024).toFixed(1) + ' MB';
   }
 
-  function setFile(file) {
-    if (!file || file.type !== 'application/pdf') {
-      alert('Por favor seleccioná un archivo PDF.');
-      return;
+  function renderFileList() {
+    fileList.innerHTML = selectedFiles.map((file, idx) => `
+      <div class="file-item">
+        <span>📎</span>
+        <span class="fname">${file.name}</span>
+        <span class="fsize">${fmtSize(file.size)}</span>
+        <button class="remove-btn" data-idx="${idx}" title="Quitar archivo">✕</button>
+      </div>
+    `).join('');
+
+    if (selectedFiles.length > 1) {
+      fileList.innerHTML += `<div class="file-list-summary">${selectedFiles.length} archivos seleccionados</div>`;
     }
-    selectedFile = file;
-    fileName.textContent = file.name;
-    fileSize.textContent = fmtSize(file.size);
-    fileInfo.classList.add('show');
-    dropZone.style.display = 'none';
-    btnGenerate.disabled = false;
+
+    fileList.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        selectedFiles.splice(idx, 1);
+        renderFileList();
+        updateGenerateState();
+      });
+    });
+  }
+
+  function updateGenerateState() {
+    btnGenerate.disabled = selectedFiles.length === 0;
+    if (selectedFiles.length === 0) {
+      dropZone.style.display = '';
+    } else {
+      dropZone.style.display = 'none';
+    }
     resetResult();
   }
 
-  function resetFile() {
-    selectedFile = null;
+  function addFiles(fileListInput) {
+    let rejected = false;
+    for (const file of fileListInput) {
+      if (file.type !== 'application/pdf') {
+        rejected = true;
+        continue;
+      }
+      selectedFiles.push(file);
+    }
+    if (rejected) {
+      alert('Solo se admiten archivos PDF. Se ignoraron los archivos que no lo son.');
+    }
+    renderFileList();
+    updateGenerateState();
+  }
+
+  function resetFiles() {
+    selectedFiles = [];
     fileInput.value = '';
-    fileInfo.classList.remove('show');
-    dropZone.style.display = '';
-    btnGenerate.disabled = true;
-    resetResult();
+    renderFileList();
+    updateGenerateState();
   }
 
   function resetResult() {
@@ -453,6 +482,11 @@ UI = """<!DOCTYPE html>
     resultEmpty.style.display = 'none';
     resultCard.classList.remove('show');
     loadingOverlay.classList.add('show');
+    if (selectedFiles.length > 1) {
+      loadingText.textContent = `Procesando ${selectedFiles.length} PDFs…`;
+    } else {
+      loadingText.textContent = 'Procesando PDF…';
+    }
   }
 
   function showResult(data) {
@@ -460,32 +494,69 @@ UI = """<!DOCTYPE html>
     resultCard.classList.add('show');
 
     if (data.ok) {
-      resultBadge.className = 'result-badge success';
-      resultBadge.innerHTML = '✅ Informe generado correctamente';
+      if (data.multi) {
+        const errCount = (data.errors || []).length;
+        if (errCount > 0) {
+          resultBadge.className = 'result-badge warning';
+          resultBadge.innerHTML = `✅ ${data.count} informe(s) generado(s), ${errCount} con error`;
+        } else {
+          resultBadge.className = 'result-badge success';
+          resultBadge.innerHTML = `✅ ${data.count} informes generados correctamente`;
+        }
+      } else {
+        resultBadge.className = 'result-badge success';
+        resultBadge.innerHTML = '✅ Informe generado correctamente';
+      }
     } else {
       resultBadge.className = 'result-badge error';
       resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
       btnDownload.style.display = 'none';
+      if (data.errors && data.errors.length) {
+        resultMeta.innerHTML = data.errors.map(e => `
+          <div style="grid-column: 1 / -1;">
+            <div class="item-label">${e.archivo}</div>
+            <div class="item-value">${e.error}</div>
+          </div>`).join('');
+      }
       return;
     }
 
     btnDownload.style.display = '';
     btnDownload.href = data.download_url;
     btnDownload.download = data.filename;
+    btnDownload.innerHTML = data.multi
+      ? '⬇️ Descargar .zip con informes membretados'
+      : '⬇️ Descargar PDF membretado';
 
-    const m = data.meta || {};
-    resultMeta.innerHTML = [
-      ['N° de orden', '#' + (m.numero_orden || '—')],
-      ['Estado',      m.estado || '—'],
-      ['Ubicación',   m.ubicacion || '—'],
-      ['Activo',      m.activo || '—'],
-      ['Asignados',   (m.asignados || []).join(', ') || '—'],
-      ['Campos',      m.campos_completados || '—'],
-    ].map(([l, v]) => `
-      <div>
-        <div class="item-label">${l}</div>
-        <div class="item-value">${v}</div>
-      </div>`).join('');
+    if (data.multi) {
+      let html = `
+        <div>
+          <div class="item-label">Procesados</div>
+          <div class="item-value">${data.count} archivo(s)</div>
+        </div>`;
+      if (data.errors && data.errors.length) {
+        html += data.errors.map(e => `
+          <div style="grid-column: 1 / -1;">
+            <div class="item-label">⚠️ ${e.archivo}</div>
+            <div class="item-value">${e.error}</div>
+          </div>`).join('');
+      }
+      resultMeta.innerHTML = html;
+    } else {
+      const m = data.meta || {};
+      resultMeta.innerHTML = [
+        ['N° de orden', '#' + (m.numero_orden || '—')],
+        ['Estado',      m.estado || '—'],
+        ['Ubicación',   m.ubicacion || '—'],
+        ['Activo',      m.activo || '—'],
+        ['Asignados',   (m.asignados || []).join(', ') || '—'],
+        ['Campos',      m.campos_completados || '—'],
+      ].map(([l, v]) => `
+        <div>
+          <div class="item-label">${l}</div>
+          <div class="item-value">${v}</div>
+        </div>`).join('');
+    }
   }
 
   // Drag & drop
@@ -496,26 +567,23 @@ UI = """<!DOCTYPE html>
     dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('over'); })
   );
   dropZone.addEventListener('drop', e => {
-    const file = e.dataTransfer.files[0];
-    if (file) setFile(file);
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   });
   fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) setFile(fileInput.files[0]);
+    if (fileInput.files.length) addFiles(fileInput.files);
   });
 
-  removeBtn.addEventListener('click', resetFile);
-
   btnReset.addEventListener('click', () => {
-    resetFile();
+    resetFiles();
   });
 
   btnGenerate.addEventListener('click', async () => {
-    if (!selectedFile) return;
+    if (!selectedFiles.length) return;
     showLoading();
     btnGenerate.disabled = true;
 
     const form = new FormData();
-    form.append('pdf', selectedFile);
+    selectedFiles.forEach(file => form.append('pdf', file));
     form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
@@ -542,59 +610,113 @@ def index():
 _pdf_store: dict = {}
 
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    if "pdf" not in request.files:
-        return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
-
-    pdf_bytes = request.files["pdf"].read()
-    observaciones = request.form.get("observaciones", "").strip()
-    if not pdf_bytes:
-        return jsonify({"error": "El archivo está vacío."}), 400
-
-    # 1. Parsear
+def process_one_pdf(pdf_bytes: bytes):
+    """Procesa un PDF de MaintainX y retorna (filename, pdf_out_bytes, meta).
+    Lanza excepción con mensaje descriptivo si algo falla."""
     try:
         data = parse_pdf(pdf_bytes)
     except Exception as exc:
-        return jsonify({"error": f"Error al parsear el PDF: {exc}"}), 422
+        raise RuntimeError(f"Error al parsear el PDF: {exc}")
 
-    # 2. Renderizar HTML
     try:
         html_b64 = render_html(data, str(TEMPLATE_PATH), str(MEMBRETE_PATH))
         html_bytes = base64.b64decode(html_b64)
     except Exception as exc:
-        return jsonify({"error": f"Error al renderizar el HTML: {exc}"}), 500
+        raise RuntimeError(f"Error al renderizar el HTML: {exc}")
 
-    # 3. Convertir a PDF vía Playwright (Chromium) — contenido sin membrete
     try:
         pdf_raw = html_to_pdf(html_bytes)
     except Exception as exc:
-        return jsonify({"error": f"Error al generar PDF con Playwright: {exc}"}), 500
+        raise RuntimeError(f"Error al generar PDF con Playwright: {exc}")
 
-    # 4. Aplicar membrete como overlay en cada página (PyMuPDF)
     try:
         pdf_out = apply_letterhead(pdf_raw, str(MEMBRETE_PATH))
     except Exception as exc:
-        return jsonify({"error": f"Error al aplicar membrete: {exc}"}), 500
+        raise RuntimeError(f"Error al aplicar membrete: {exc}")
 
-    # 4. Guardar PDF temporalmente y servir URL de descarga
     numero   = data.get("meta", {}).get("numero_orden", "informe")
     filename = f"informe-{numero}.pdf"
+    return filename, pdf_out, data.get("meta", {})
 
-    # Guardamos en memoria con un ID de sesión simple
-    import hashlib, time
-    file_id = hashlib.md5(f"{numero}{time.time()}".encode()).hexdigest()[:12]
-    _pdf_store[file_id] = (filename, pdf_out)
 
-    val = data.get("validacion", {})
-    warnings = val.get("valores_fuera_de_conjunto", [])
+@app.route("/generate", methods=["POST"])
+def generate():
+    files = request.files.getlist("pdf")
+    if not files:
+        return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
+
+    import hashlib, time, zipfile
+
+    # ─── Un solo archivo: comportamiento original (PDF directo) ───────────
+    if len(files) == 1:
+        pdf_bytes = files[0].read()
+        if not pdf_bytes:
+            return jsonify({"error": "El archivo está vacío."}), 400
+
+        try:
+            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 500
+
+        file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
+        _pdf_store[file_id] = (filename, pdf_out)
+
+        return jsonify({
+            "ok":           True,
+            "multi":        False,
+            "meta":         meta,
+            "filename":     filename,
+            "download_url": f"/download/{file_id}",
+        })
+
+    # ─── Múltiples archivos: procesar en cola y empaquetar en .zip ─────────
+    results = []   # [(filename, pdf_bytes)]
+    errors  = []   # [{"archivo": nombre_original, "error": mensaje}]
+
+    for f in files:
+        original_name = f.filename or "archivo.pdf"
+        pdf_bytes = f.read()
+        if not pdf_bytes:
+            errors.append({"archivo": original_name, "error": "Archivo vacío"})
+            continue
+        try:
+            filename, pdf_out, _meta = process_one_pdf(pdf_bytes)
+            # Evitar nombres duplicados dentro del zip
+            base, ext = os.path.splitext(filename)
+            candidate = filename
+            n = 1
+            existentes = {r[0] for r in results}
+            while candidate in existentes:
+                candidate = f"{base}_{n}{ext}"
+                n += 1
+            results.append((candidate, pdf_out))
+        except RuntimeError as exc:
+            errors.append({"archivo": original_name, "error": str(exc)})
+
+    if not results:
+        return jsonify({
+            "ok":     False,
+            "error":  "No se pudo procesar ningún archivo.",
+            "errors": errors,
+        }), 500
+
+    # Crear .zip en memoria
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, pdf_bytes_ in results:
+            zf.writestr(fname, pdf_bytes_)
+    zip_buf.seek(0)
+
+    zip_filename = f"informes-membretados-{int(time.time())}.zip"
+    file_id = hashlib.md5(f"{zip_filename}{time.time()}".encode()).hexdigest()[:12]
+    _pdf_store[file_id] = (zip_filename, zip_buf.getvalue())
 
     return jsonify({
         "ok":           True,
-        "warning":      bool(warnings),
-        "meta":         data.get("meta", {}),
-        "warnings":     warnings,
-        "filename":     filename,
+        "multi":        True,
+        "count":        len(results),
+        "errors":       errors,
+        "filename":     zip_filename,
         "download_url": f"/download/{file_id}",
     })
 
@@ -603,10 +725,11 @@ def generate():
 def download(file_id):
     if file_id not in _pdf_store:
         return "Archivo no encontrado o expirado.", 404
-    filename, pdf_bytes = _pdf_store[file_id]
+    filename, file_bytes = _pdf_store[file_id]
+    mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
     return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
+        io.BytesIO(file_bytes),
+        mimetype=mimetype,
         as_attachment=True,
         download_name=filename,
     )
