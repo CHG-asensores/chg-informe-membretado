@@ -32,7 +32,13 @@ MEMBRETE_PATH = BASE_DIR / "template" / "assets" / "membrete.png"
 def html_to_pdf(html_bytes: bytes) -> bytes:
     """Renderiza HTML a PDF usando Chromium headless."""
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(args=[
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--single-process",
+            "--disable-extensions",
+        ])
         page = browser.new_page()
         page.set_content(html_bytes.decode("utf-8"), wait_until="networkidle")
         pdf = page.pdf(
@@ -68,7 +74,7 @@ def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
     src.close()
     return out
 
-# ─── HTML de la interfaz ──────────────────────────────────────────────────────
+
 UI = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -362,6 +368,7 @@ UI = """<!DOCTYPE html>
       <button class="remove-btn" id="removeBtn" title="Quitar archivo">✕</button>
     </div>
 
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
       Generar informe membretado
@@ -542,6 +549,7 @@ UI = """<!DOCTYPE html>
 
     const form = new FormData();
     form.append('pdf', selectedFile);
+    form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
       const resp = await fetch('/generate', { method: 'POST', body: form });
@@ -557,12 +565,14 @@ UI = """<!DOCTYPE html>
 </body>
 </html>"""
 
-
-# ─── Rutas ───────────────────────────────────────────────────────────────────
-
 @app.route("/")
+
+
 def index():
     return render_template_string(UI)
+
+
+_pdf_store: dict = {}
 
 
 @app.route("/generate", methods=["POST"])
@@ -571,6 +581,7 @@ def generate():
         return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
 
     pdf_bytes = request.files["pdf"].read()
+    observaciones = request.form.get("observaciones", "").strip()
     if not pdf_bytes:
         return jsonify({"error": "El archivo está vacío."}), 400
 
@@ -619,9 +630,6 @@ def generate():
         "filename":     filename,
         "download_url": f"/download/{file_id}",
     })
-
-
-_pdf_store: dict = {}
 
 
 @app.route("/download/<file_id>")
