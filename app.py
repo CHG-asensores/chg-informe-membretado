@@ -262,7 +262,24 @@ UI = """<!DOCTYPE html>
     .result-meta .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     .result-meta .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
 
-    .result-meta-list { display: flex; flex-direction: column; gap: 10px; }
+    .carousel { display: flex; flex-direction: column; gap: 10px; }
+    .carousel-track {
+      display: flex; align-items: stretch; gap: 10px;
+    }
+    .carousel-arrow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      width: 36px; flex-shrink: 0; cursor: pointer; font-size: 16px;
+      color: #475569; display: flex; align-items: center; justify-content: center;
+      transition: background .2s, color .2s, opacity .2s;
+    }
+    .carousel-arrow:hover:not(:disabled) { background: #f1f5f9; color: #1e293b; }
+    .carousel-arrow:disabled { opacity: .35; cursor: not-allowed; }
+    .carousel-slide { flex: 1; min-width: 0; }
+    .carousel-pagination {
+      text-align: center; font-size: 12px; color: #94a3b8;
+      font-variant-numeric: tabular-nums;
+    }
+
     .result-meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; }
     .result-meta-card .card-title { font-weight: 600; font-size: 13px; color: #1e293b; margin-bottom: 8px; }
     .result-meta-card .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px; color: #475569; }
@@ -508,9 +525,41 @@ UI = """<!DOCTYPE html>
         </div>`).join('');
   }
 
+  // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
+  let carouselSlides = [];   // array de strings HTML, una por archivo
+  let carouselIndex  = 0;
+
+  function renderCarousel() {
+    const total = carouselSlides.length;
+    if (total === 0) {
+      resultMeta.innerHTML = '';
+      return;
+    }
+    if (carouselIndex < 0) carouselIndex = 0;
+    if (carouselIndex > total - 1) carouselIndex = total - 1;
+
+    resultMeta.innerHTML = `
+      <div class="carousel">
+        <div class="carousel-track">
+          <button class="carousel-arrow" id="carouselPrev" ${carouselIndex === 0 ? 'disabled' : ''} title="Anterior">‹</button>
+          <div class="carousel-slide">${carouselSlides[carouselIndex]}</div>
+          <button class="carousel-arrow" id="carouselNext" ${carouselIndex === total - 1 ? 'disabled' : ''} title="Siguiente">›</button>
+        </div>
+        <div class="carousel-pagination">${carouselIndex + 1} / ${total}</div>
+      </div>
+    `;
+
+    const prevBtn = document.getElementById('carouselPrev');
+    const nextBtn = document.getElementById('carouselNext');
+    if (prevBtn) prevBtn.addEventListener('click', () => { carouselIndex--; renderCarousel(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { carouselIndex++; renderCarousel(); });
+  }
+
   function showResult(data) {
     loadingOverlay.classList.remove('show');
     resultCard.classList.add('show');
+    carouselSlides = [];
+    carouselIndex = 0;
 
     if (data.ok) {
       if (data.multi) {
@@ -531,14 +580,13 @@ UI = """<!DOCTYPE html>
       resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
       btnDownload.style.display = 'none';
       if (data.errors && data.errors.length) {
-        resultMeta.innerHTML = `<div class="result-meta-list">` + data.errors.map(e => `
+        carouselSlides = data.errors.map(e => `
           <div class="result-meta-card error">
             <div class="card-title">${e.archivo}</div>
             <div class="item-value">${e.error}</div>
-          </div>`).join('') + `</div>`;
-      } else {
-        resultMeta.innerHTML = '';
+          </div>`);
       }
+      renderCarousel();
       return;
     }
 
@@ -550,7 +598,7 @@ UI = """<!DOCTYPE html>
       : '⬇️ Descargar PDF membretado';
 
     if (data.multi) {
-      let cards = (data.items || []).map(item => {
+      carouselSlides = (data.items || []).map(item => {
         const m = item.meta || {};
         const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
         return `
@@ -561,14 +609,14 @@ UI = """<!DOCTYPE html>
       });
 
       if (data.errors && data.errors.length) {
-        cards = cards.concat(data.errors.map(e => `
+        carouselSlides = carouselSlides.concat(data.errors.map(e => `
           <div class="result-meta-card error">
             <div class="card-title">⚠️ ${e.archivo}</div>
             <div class="item-value">${e.error}</div>
           </div>`));
       }
 
-      resultMeta.innerHTML = `<div class="result-meta-list">${cards.join('')}</div>`;
+      renderCarousel();
     } else {
       resultMeta.innerHTML = metaGridHtml(data.meta || {});
     }
