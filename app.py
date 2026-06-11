@@ -307,6 +307,36 @@ UI = """<!DOCTYPE html>
     }
     .btn-download:hover { background: #15803d; }
 
+    .btn-drive {
+      background: #fff;
+      color: #1a73e8;
+      border: 1.5px solid #1a73e8;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background .2s, color .2s;
+    }
+    .btn-drive:hover:not(:disabled) { background: #1a73e8; color: #fff; }
+    .btn-drive:disabled { opacity: .5; cursor: not-allowed; }
+
+    .approve-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #334155; margin-top: 8px;
+      user-select: none; cursor: pointer;
+    }
+    .approve-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+    .drive-status { font-size: 12px; margin-top: 2px; }
+    .drive-status.ok    { color: #166534; }
+    .drive-status.error { color: #991b1b; }
+
     .btn-reset {
       background: none;
       border: 1px solid #e2e8f0;
@@ -411,6 +441,11 @@ UI = """<!DOCTYPE html>
         ⬇️ Descargar informe
       </a>
 
+      <button class="btn-drive" id="btnDrive">
+        📤 Subir aprobados a Drive
+      </button>
+      <div class="drive-status" id="driveStatus"></div>
+
       <button class="btn-reset" id="btnReset">Procesar otro(s) PDF</button>
     </div>
   </div>
@@ -431,6 +466,8 @@ UI = """<!DOCTYPE html>
   const resultBadge   = document.getElementById('resultBadge');
   const resultMeta    = document.getElementById('resultMeta');
   const btnDownload   = document.getElementById('btnDownload');
+  const btnDrive      = document.getElementById('btnDrive');
+  const driveStatus   = document.getElementById('driveStatus');
   const btnReset      = document.getElementById('btnReset');
 
   let selectedFiles = [];
@@ -497,6 +534,7 @@ UI = """<!DOCTYPE html>
     resultCard.classList.remove('show');
     loadingOverlay.classList.remove('show');
     resultEmpty.style.display = '';
+    if (driveStatus) { driveStatus.textContent = ''; driveStatus.className = 'drive-status'; }
   }
 
   function showLoading() {
@@ -528,6 +566,7 @@ UI = """<!DOCTYPE html>
   // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
   let carouselSlides = [];   // array de strings HTML, una por archivo
   let carouselIndex  = 0;
+  let approvedIds    = new Set();   // file_id de tarjetas marcadas "Aprobado"
 
   function renderCarousel() {
     const total = carouselSlides.length;
@@ -553,6 +592,35 @@ UI = """<!DOCTYPE html>
     const nextBtn = document.getElementById('carouselNext');
     if (prevBtn) prevBtn.addEventListener('click', () => { carouselIndex--; renderCarousel(); });
     if (nextBtn) nextBtn.addEventListener('click', () => { carouselIndex++; renderCarousel(); });
+
+    const approveCb = document.getElementById('approveCheckbox');
+    if (approveCb) {
+      approveCb.addEventListener('change', () => {
+        const fid = approveCb.dataset.fileId;
+        if (approveCb.checked) approvedIds.add(fid);
+        else approvedIds.delete(fid);
+        updateDriveButtonState();
+      });
+    }
+  }
+
+  function approveCheckboxHtml(fileId) {
+    if (!fileId) return '';
+    const checked = approvedIds.has(fileId) ? 'checked' : '';
+    return `
+      <label class="approve-row" style="grid-column: 1 / -1;">
+        <input type="checkbox" id="approveCheckbox" data-file-id="${fileId}" ${checked}>
+        Aprobado para subir a Drive
+      </label>`;
+  }
+
+  function updateDriveButtonState() {
+    btnDrive.disabled = approvedIds.size === 0;
+    btnDrive.textContent = approvedIds.size > 0
+      ? `📤 Subir ${approvedIds.size} aprobado(s) a Drive`
+      : '📤 Subir aprobados a Drive';
+    driveStatus.textContent = '';
+    driveStatus.className = 'drive-status';
   }
 
   function showResult(data) {
@@ -560,6 +628,9 @@ UI = """<!DOCTYPE html>
     resultCard.classList.add('show');
     carouselSlides = [];
     carouselIndex = 0;
+    approvedIds = new Set();
+    btnDrive.style.display = '';
+    updateDriveButtonState();
 
     if (data.ok) {
       if (data.multi) {
@@ -579,6 +650,7 @@ UI = """<!DOCTYPE html>
       resultBadge.className = 'result-badge error';
       resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
       btnDownload.style.display = 'none';
+      btnDrive.style.display = 'none';
       if (data.errors && data.errors.length) {
         carouselSlides = data.errors.map(e => `
           <div class="result-meta-card error">
@@ -605,6 +677,7 @@ UI = """<!DOCTYPE html>
           <div class="result-meta-card">
             <div class="card-title">${titulo}</div>
             <div class="card-grid">${metaGridHtml(m)}</div>
+            ${approveCheckboxHtml(item.file_id)}
           </div>`;
       });
 
@@ -618,7 +691,17 @@ UI = """<!DOCTYPE html>
 
       renderCarousel();
     } else {
-      resultMeta.innerHTML = metaGridHtml(data.meta || {});
+      resultMeta.innerHTML = metaGridHtml(data.meta || {})
+        + approveCheckboxHtml(data.file_id);
+      const approveCb = document.getElementById('approveCheckbox');
+      if (approveCb) {
+        approveCb.addEventListener('change', () => {
+          const fid = approveCb.dataset.fileId;
+          if (approveCb.checked) approvedIds.add(fid);
+          else approvedIds.delete(fid);
+          updateDriveButtonState();
+        });
+      }
     }
   }
 
@@ -658,6 +741,40 @@ UI = """<!DOCTYPE html>
       showResult({ error: 'Error de red: ' + err.message });
     } finally {
       btnGenerate.disabled = false;
+    }
+  });
+
+  btnDrive.addEventListener('click', async () => {
+    if (approvedIds.size === 0) return;
+    btnDrive.disabled = true;
+    driveStatus.className = 'drive-status';
+    driveStatus.textContent = '⏳ Subiendo a Drive…';
+
+    try {
+      const resp = await fetch('/upload-to-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: Array.from(approvedIds) }),
+      });
+      const data = await resp.json();
+
+      if (resp.status === 501) {
+        driveStatus.className = 'drive-status error';
+        driveStatus.textContent = '⚠️ ' + data.error;
+      } else if (data.ok) {
+        driveStatus.className = 'drive-status ok';
+        driveStatus.textContent = `✅ ${data.results.length} archivo(s) subido(s) a Drive correctamente.`;
+      } else {
+        const failed = (data.results || []).filter(r => !r.ok);
+        driveStatus.className = 'drive-status error';
+        driveStatus.textContent = `⚠️ ${failed.length} archivo(s) fallaron: `
+          + failed.map(f => `${f.filename || f.file_id} (${f.error})`).join(', ');
+      }
+    } catch (err) {
+      driveStatus.className = 'drive-status error';
+      driveStatus.textContent = '❌ Error de red: ' + err.message;
+    } finally {
+      btnDrive.disabled = approvedIds.size === 0;
     }
   });
 </script>
@@ -730,6 +847,7 @@ def generate():
             "multi":        False,
             "meta":         meta,
             "filename":     filename,
+            "file_id":      file_id,
             "download_url": f"/download/{file_id}",
         })
 
@@ -755,7 +873,9 @@ def generate():
                 candidate = f"{base}_{n}{ext}"
                 n += 1
             results.append((candidate, pdf_out))
-            items.append({"filename": candidate, "meta": meta})
+            individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
+            _pdf_store[individual_id] = (candidate, pdf_out)
+            items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
         except RuntimeError as exc:
             errors.append({"archivo": original_name, "error": str(exc)})
 
@@ -800,6 +920,57 @@ def download(file_id):
         as_attachment=True,
         download_name=filename,
     )
+
+
+@app.route("/upload-to-drive", methods=["POST"])
+def upload_to_drive():
+    """Reenvía los PDFs aprobados (por file_id) a un webhook de n8n,
+    que se encarga de subirlos a Google Drive.
+
+    Configurar la variable de entorno N8N_WEBHOOK_URL con la URL del
+    webhook de n8n (nodo Webhook -> Google Drive Upload).
+    """
+    webhook_url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        return jsonify({
+            "ok": False,
+            "error": "La integración con n8n aún no está configurada "
+                     "(falta la variable de entorno N8N_WEBHOOK_URL).",
+        }), 501
+
+    payload = request.get_json(silent=True) or {}
+    file_ids = payload.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"ok": False, "error": "No se indicó ningún archivo aprobado."}), 400
+
+    import requests
+
+    results = []
+    for fid in file_ids:
+        if fid not in _pdf_store:
+            results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
+            continue
+
+        filename, file_bytes = _pdf_store[fid]
+        try:
+            resp = requests.post(
+                webhook_url,
+                files={"file": (filename, file_bytes, "application/pdf")},
+                data={"filename": filename},
+                timeout=60,
+            )
+            if resp.ok:
+                results.append({"file_id": fid, "filename": filename, "ok": True})
+            else:
+                results.append({
+                    "file_id": fid, "filename": filename, "ok": False,
+                    "error": f"n8n respondió con estado {resp.status_code}",
+                })
+        except Exception as exc:
+            results.append({"file_id": fid, "filename": filename, "ok": False, "error": str(exc)})
+
+    all_ok = all(r["ok"] for r in results)
+    return jsonify({"ok": all_ok, "results": results})
 
 
 if __name__ == "__main__":
