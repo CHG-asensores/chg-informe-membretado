@@ -245,7 +245,6 @@ UI = """<!DOCTYPE html>
     }
     .result-badge.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
     .result-badge.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-    .result-badge.warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
 
     .result-meta {
       background: #f8fafc;
@@ -313,19 +312,6 @@ UI = """<!DOCTYPE html>
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { font-size: 15px; font-weight: 500; color: #334155; }
     .loading-sub  { font-size: 13px; color: #94a3b8; }
-
-    /* Validation warning */
-    .val-details {
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 12px;
-      color: #78350f;
-      display: none;
-    }
-    .val-details.show { display: block; }
-    .val-details ul { margin-top: 6px; padding-left: 16px; }
 
     footer {
       text-align: center;
@@ -398,11 +384,6 @@ UI = """<!DOCTYPE html>
 
       <div class="result-meta" id="resultMeta"></div>
 
-      <div class="val-details" id="valDetails">
-        <strong>Advertencias de validación:</strong>
-        <ul id="valList"></ul>
-      </div>
-
       <a class="btn-download" id="btnDownload" href="#" download>
         ⬇️ Descargar PDF membretado
       </a>
@@ -428,8 +409,6 @@ UI = """<!DOCTYPE html>
   const resultCard    = document.getElementById('resultCard');
   const resultBadge   = document.getElementById('resultBadge');
   const resultMeta    = document.getElementById('resultMeta');
-  const valDetails    = document.getElementById('valDetails');
-  const valList       = document.getElementById('valList');
   const btnDownload   = document.getElementById('btnDownload');
   const btnReset      = document.getElementById('btnReset');
 
@@ -483,9 +462,6 @@ UI = """<!DOCTYPE html>
     if (data.ok) {
       resultBadge.className = 'result-badge success';
       resultBadge.innerHTML = '✅ Informe generado correctamente';
-    } else if (data.warning) {
-      resultBadge.className = 'result-badge warning';
-      resultBadge.innerHTML = '⚠️ Generado con advertencias de validación';
     } else {
       resultBadge.className = 'result-badge error';
       resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
@@ -510,15 +486,6 @@ UI = """<!DOCTYPE html>
         <div class="item-label">${l}</div>
         <div class="item-value">${v}</div>
       </div>`).join('');
-
-    if (data.warnings && data.warnings.length) {
-      valList.innerHTML = data.warnings.map(w =>
-        `<li><strong>${w.etiqueta}</strong>: "${w.valor}"</li>`
-      ).join('');
-      valDetails.classList.add('show');
-    } else {
-      valDetails.classList.remove('show');
-    }
   }
 
   // Drag & drop
