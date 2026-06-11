@@ -955,7 +955,7 @@ def upload_to_drive():
         try:
             resp = requests.post(
                 webhook_url,
-                files={"file": (filename, file_bytes, "application/pdf")},
+                files={"data": (filename, file_bytes, "application/pdf")},
                 data={"filename": filename},
                 timeout=60,
             )
