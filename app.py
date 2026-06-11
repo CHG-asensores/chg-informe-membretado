@@ -353,4 +353,245 @@ UI = """<!DOCTYPE html>
 
     <div class="file-list" id="fileList"></div>
 
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
+    <button class="btn-generate" id="btnGenerate" disabled>
+      <span>⚙️</span>
+      Generar informe(s) membretado(s)
+    </button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <div class="step">2</div>
+      Descargar informe
+    </div>
+
+    <div class="result-empty" id="resultEmpty">
+      <div class="icon">📋</div>
+      <p>El/los informe(s) membretado(s) aparecerán aquí<br>una vez que subas y proceses el/los PDF.</p>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loadingText">Procesando PDF…</div>
+      <div class="loading-sub">Parseando datos y generando informe</div>
+    </div>
+
+    <div class="result-card" id="resultCard">
+      <div class="result-badge" id="resultBadge"></div>
+
+      <div class="result-meta" id="resultMeta"></div>
+
+      <a class="btn-download" id="btnDownload" href="#" download>
+        ⬇️ Descargar informe
+      </a>
+
+      <button class="btn-drive" id="btnDrive">
+        📤 Subir aprobados a Drive
+      </button>
+      <div class="drive-status" id="driveStatus"></div>
+
+      <button class="btn-reset" id="btnReset">Procesar otro(s) PDF</button>
+    </div>
+  </div>
+</main>
+
+<footer>CHG Ascensores · Informes Membretados</footer>
+
+<script>
+  const dropZone    = document.getElementById('dropZone');
+  const fileInput   = document.getElementById('fileInput');
+  const fileList    = document.getElementById('fileList');
+  const btnGenerate = document.getElementById('btnGenerate');
+
+  const resultEmpty   = document.getElementById('resultEmpty');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText   = document.getElementById('loadingText');
+  const resultCard    = document.getElementById('resultCard');
+  const resultBadge   = document.getElementById('resultBadge');
+  const resultMeta    = document.getElementById('resultMeta');
+  const btnDownload   = document.getElementById('btnDownload');
+  const btnDrive      = document.getElementById('btnDrive');
+  const driveStatus   = document.getElementById('driveStatus');
+  const btnReset      = document.getElementById('btnReset');
+
+  let selectedFiles = [];
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/1024/1024).toFixed(1) + ' MB';
+  }
+
+  function renderFileList() {
+    fileList.innerHTML = selectedFiles.map((file, idx) => `
+      <div class="file-item">
+        <span>📎</span>
+        <span class="fname">${file.name}</span>
+        <span class="fsize">${fmtSize(file.size)}</span>
+        <button class="remove-btn" data-idx="${idx}" title="Quitar archivo">✕</button>
+      </div>
+    `).join('');
+
+    if (selectedFiles.length > 1) {
+      fileList.innerHTML += `<div class="file-list-summary">${selectedFiles.length} archivos seleccionados</div>`;
+    }
+
+    fileList.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        selectedFiles.splice(idx, 1);
+        renderFileList();
+        updateGenerateState();
+      });
+    });
+  }
+
+  function updateGenerateState() {
+    btnGenerate.disabled = selectedFiles.length === 0;
+    resetResult();
+  }
+
+  function addFiles(fileListInput) {
+    let rejected = false;
+    for (const file of fileListInput) {
+      if (file.type !== 'application/pdf') {
+        rejected = true;
+        continue;
+      }
+      selectedFiles.push(file);
+    }
+    if (rejected) {
+      alert('Solo se admiten archivos PDF. Se ignoraron los archivos que no lo son.');
+    }
+    renderFileList();
+    updateGenerateState();
+  }
+
+  function resetFiles() {
+    selectedFiles = [];
+    fileInput.value = '';
+    renderFileList();
+    updateGenerateState();
+  }
+
+  function resetResult() {
+    resultCard.classList.remove('show');
+    loadingOverlay.classList.remove('show');
+    resultEmpty.style.display = '';
+    if (driveStatus) { driveStatus.textContent = ''; driveStatus.className = 'drive-status'; }
+  }
+
+  function showLoading() {
+    resultEmpty.style.display = 'none';
+    resultCard.classList.remove('show');
+    loadingOverlay.classList.add('show');
+    if (selectedFiles.length > 1) {
+      loadingText.textContent = `Procesando ${selectedFiles.length} PDFs…`;
+    } else {
+      loadingText.textContent = 'Procesando PDF…';
+    }
+  }
+
+  function metaGridHtml(m) {
+    return [
+      ['N° de orden', '#' + (m.numero_orden || '—')],
+      ['Estado',      m.estado || '—'],
+      ['Ubicación',   m.ubicacion || '—'],
+      ['Activo',      m.activo || '—'],
+      ['Asignados',   (m.asignados || []).join(', ') || '—'],
+    ].map(([l, v]) => `
+        <div>
+          <div class="item-label">${l}</div>
+          <div class="item-value">${v}</div>
+        </div>`).join('');
+  }
+
+  // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
+  let carouselSlides = [];   // array de strings HTML, una por archivo
+  let carouselIndex  = 0;
+  let approvedIds    = new Set();   // file_id de tarjetas marcadas "Aprobado"
+
+  function renderCarousel() {
+    const total = carouselSlides.length;
+    if (total === 0) {
+      resultMeta.innerHTML = '';
+      return;
+    }
+    if (carouselIndex < 0) carouselIndex = 0;
+    if (carouselIndex > total - 1) carouselIndex = total - 1;
+
+    resultMeta.innerHTML = `
+      <div class="carousel">
+        <div class="carousel-track">
+          <button class="carousel-arrow" id="carouselPrev" ${carouselIndex === 0 ? 'disabled' : ''} title="Anterior">‹</button>
+          <div class="carousel-slide">${carouselSlides[carouselIndex]}</div>
+          <button class="carousel-arrow" id="carouselNext" ${carouselIndex === total - 1 ? 'disabled' : ''} title="Siguiente">›</button>
+        </div>
+        <div class="carousel-pagination">${carouselIndex + 1} / ${total}</div>
+      </div>
+    `;
+
+    const prevBtn = document.getElementById('carouselPrev');
+    const nextBtn = document.getElementById('carouselNext');
+    if (prevBtn) prevBtn.addEventListener('click', () => { carouselIndex--; renderCarousel(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { carouselIndex++; renderCarousel(); });
+
+    const approveCb = document.getElementById('approveCheckbox');
+    if (approveCb) {
+      approveCb.addEventListener('change', () => {
+        const fid = approveCb.dataset.fileId;
+        if (approveCb.checked) approvedIds.add(fid);
+        else approvedIds.delete(fid);
+        updateDriveButtonState();
+      });
+    }
+  }
+
+  function approveCheckboxHtml(fileId) {
+    if (!fileId) return '';
+    const checked = approvedIds.has(fileId) ? 'checked' : '';
+    return `
+      <label class="approve-row" style="grid-column: 1 / -1;">
+        <input type="checkbox" id="approveCheckbox" data-file-id="${fileId}" ${checked}>
+        Aprobado para subir a Drive
+      </label>`;
+  }
+
+  function updateDriveButtonState() {
+    btnDrive.disabled = approvedIds.size === 0;
+    btnDrive.textContent = approvedIds.size > 0
+      ? `📤 Subir ${approvedIds.size} aprobado(s) a Drive`
+      : '📤 Subir aprobados a Drive';
+    driveStatus.textContent = '';
+    driveStatus.className = 'drive-status';
+  }
+
+  function showResult(data) {
+    loadingOverlay.classList.remove('show');
+    resultCard.classList.add('show');
+    carouselSlides = [];
+    carouselIndex = 0;
+    approvedIds = new Set();
+    btnDrive.style.display = '';
+    updateDriveButtonState();
+
+    if (data.ok) {
+      if (data.multi) {
+        const errCount = (data.errors || []).length;
+        if (errCount > 0) {
+          resultBadge.className = 'result-badge warning';
+          resultBadge.innerHTML = `✅ ${data.count} informe(s) generado(s), ${errCount} con error`;
+        } else {
+          resultBadge.className = 'result-badge success';
+          resultBadge.innerHTML = `✅ ${data.count} informes generados correctamente`;
+        }
+      } else {
+        resultBadge.className = 'result-badge success';
+        resultBadge.innerHTML = '✅ Informe generado correctamente';
+      }
+    } else {
+      resultBadge.className = 'result-badge error';
+      resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
+      btnDownload.style.display = 'none';
+      btnDrive.style.display = '
