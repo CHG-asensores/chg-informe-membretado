@@ -262,6 +262,15 @@ UI = """<!DOCTYPE html>
     .result-meta .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     .result-meta .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
 
+    .result-meta-list { display: flex; flex-direction: column; gap: 10px; }
+    .result-meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; }
+    .result-meta-card .card-title { font-weight: 600; font-size: 13px; color: #1e293b; margin-bottom: 8px; }
+    .result-meta-card .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px; color: #475569; }
+    .result-meta-card .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .result-meta-card .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
+    .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
+    .result-meta-card.error .item-value { color: #991b1b; }
+
     .btn-download {
       background: #16a34a;
       color: #fff;
@@ -484,6 +493,21 @@ UI = """<!DOCTYPE html>
     }
   }
 
+  function metaGridHtml(m) {
+    return [
+      ['N° de orden', '#' + (m.numero_orden || '—')],
+      ['Estado',      m.estado || '—'],
+      ['Ubicación',   m.ubicacion || '—'],
+      ['Activo',      m.activo || '—'],
+      ['Asignados',   (m.asignados || []).join(', ') || '—'],
+      ['Campos',      m.campos_completados || '—'],
+    ].map(([l, v]) => `
+        <div>
+          <div class="item-label">${l}</div>
+          <div class="item-value">${v}</div>
+        </div>`).join('');
+  }
+
   function showResult(data) {
     loadingOverlay.classList.remove('show');
     resultCard.classList.add('show');
@@ -507,11 +531,13 @@ UI = """<!DOCTYPE html>
       resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
       btnDownload.style.display = 'none';
       if (data.errors && data.errors.length) {
-        resultMeta.innerHTML = data.errors.map(e => `
-          <div style="grid-column: 1 / -1;">
-            <div class="item-label">${e.archivo}</div>
+        resultMeta.innerHTML = `<div class="result-meta-list">` + data.errors.map(e => `
+          <div class="result-meta-card error">
+            <div class="card-title">${e.archivo}</div>
             <div class="item-value">${e.error}</div>
-          </div>`).join('');
+          </div>`).join('') + `</div>`;
+      } else {
+        resultMeta.innerHTML = '';
       }
       return;
     }
@@ -524,33 +550,27 @@ UI = """<!DOCTYPE html>
       : '⬇️ Descargar PDF membretado';
 
     if (data.multi) {
-      let html = `
-        <div>
-          <div class="item-label">Procesados</div>
-          <div class="item-value">${data.count} archivo(s)</div>
-        </div>`;
+      let cards = (data.items || []).map(item => {
+        const m = item.meta || {};
+        const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
+        return `
+          <div class="result-meta-card">
+            <div class="card-title">${titulo}</div>
+            <div class="card-grid">${metaGridHtml(m)}</div>
+          </div>`;
+      });
+
       if (data.errors && data.errors.length) {
-        html += data.errors.map(e => `
-          <div style="grid-column: 1 / -1;">
-            <div class="item-label">⚠️ ${e.archivo}</div>
+        cards = cards.concat(data.errors.map(e => `
+          <div class="result-meta-card error">
+            <div class="card-title">⚠️ ${e.archivo}</div>
             <div class="item-value">${e.error}</div>
-          </div>`).join('');
+          </div>`));
       }
-      resultMeta.innerHTML = html;
+
+      resultMeta.innerHTML = `<div class="result-meta-list">${cards.join('')}</div>`;
     } else {
-      const m = data.meta || {};
-      resultMeta.innerHTML = [
-        ['N° de orden', '#' + (m.numero_orden || '—')],
-        ['Estado',      m.estado || '—'],
-        ['Ubicación',   m.ubicacion || '—'],
-        ['Activo',      m.activo || '—'],
-        ['Asignados',   (m.asignados || []).join(', ') || '—'],
-        ['Campos',      m.campos_completados || '—'],
-      ].map(([l, v]) => `
-        <div>
-          <div class="item-label">${l}</div>
-          <div class="item-value">${v}</div>
-        </div>`).join('');
+      resultMeta.innerHTML = metaGridHtml(data.meta || {});
     }
   }
 
@@ -667,6 +687,7 @@ def generate():
 
     # ─── Múltiples archivos: procesar en cola y empaquetar en .zip ─────────
     results = []   # [(filename, pdf_bytes)]
+    items   = []   # [{"filename": ..., "meta": {...}}]
     errors  = []   # [{"archivo": nombre_original, "error": mensaje}]
 
     for f in files:
@@ -676,7 +697,7 @@ def generate():
             errors.append({"archivo": original_name, "error": "Archivo vacío"})
             continue
         try:
-            filename, pdf_out, _meta = process_one_pdf(pdf_bytes)
+            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
             # Evitar nombres duplicados dentro del zip
             base, ext = os.path.splitext(filename)
             candidate = filename
@@ -686,6 +707,7 @@ def generate():
                 candidate = f"{base}_{n}{ext}"
                 n += 1
             results.append((candidate, pdf_out))
+            items.append({"filename": candidate, "meta": meta})
         except RuntimeError as exc:
             errors.append({"archivo": original_name, "error": str(exc)})
 
@@ -711,6 +733,7 @@ def generate():
         "ok":           True,
         "multi":        True,
         "count":        len(results),
+        "items":        items,
         "errors":       errors,
         "filename":     zip_filename,
         "download_url": f"/download/{file_id}",
