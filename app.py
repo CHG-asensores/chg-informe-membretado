@@ -441,11 +441,6 @@ UI = """<!DOCTYPE html>
 
   function updateGenerateState() {
     btnGenerate.disabled = selectedFiles.length === 0;
-    if (selectedFiles.length === 0) {
-      dropZone.style.display = '';
-    } else {
-      dropZone.style.display = 'none';
-    }
     resetResult();
   }
 
@@ -571,6 +566,7 @@ UI = """<!DOCTYPE html>
   });
   fileInput.addEventListener('change', () => {
     if (fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = '';
   });
 
   btnReset.addEventListener('click', () => {
