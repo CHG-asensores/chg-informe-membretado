@@ -22,7 +22,7 @@ from maintainx_parser import parse_pdf
 from render_html import render_html
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024  # 150 MB (varios PDFs)
 
 BASE_DIR      = Path(__file__).parent
 TEMPLATE_PATH = BASE_DIR / "template" / "informe.html"
@@ -52,12 +52,7 @@ def html_to_pdf(html_bytes: bytes) -> bytes:
 
 
 def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
-    """Sobrepone el membrete como fondo en cada página del PDF.
-
-    insert_image con overlay=False lo coloca DETRÁS del contenido existente,
-    así el texto y elementos del informe quedan por encima del membrete.
-    Garantiza que el membrete se repita idéntico en TODAS las páginas.
-    """
+    """Sobrepone el membrete como fondo en cada página del PDF."""
     src = fitz.open(stream=pdf_bytes, filetype="pdf")
     with open(membrete_path, "rb") as f:
         membrete_bytes = f.read()
@@ -175,24 +170,25 @@ UI = """<!DOCTYPE html>
     .drop-text { font-size: 15px; font-weight: 500; color: #334155; margin-bottom: 6px; }
     .drop-hint { font-size: 13px; color: #94a3b8; }
 
-    .file-info {
-      display: none;
+    .file-list { display: flex; flex-direction: column; gap: 8px; }
+    .file-item {
+      display: flex;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
-      padding: 12px 16px;
+      padding: 10px 14px;
       font-size: 14px;
       color: #334155;
       align-items: center;
       gap: 10px;
     }
-    .file-info.show { display: flex; }
-    .file-info .fname { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .file-info .fsize { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
-    .file-info .remove-btn {
+    .file-item .fname { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .fsize { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
+    .file-item .remove-btn {
       background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 18px; line-height: 1; padding: 0 2px;
     }
-    .file-info .remove-btn:hover { color: #ef4444; }
+    .file-item .remove-btn:hover { color: #ef4444; }
+    .file-list-summary { font-size: 12px; color: #94a3b8; padding: 0 2px; }
 
     .btn-generate {
       background: #1a1a2e;
@@ -261,6 +257,32 @@ UI = """<!DOCTYPE html>
     .result-meta .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     .result-meta .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
 
+    .carousel { display: flex; flex-direction: column; gap: 10px; }
+    .carousel-track {
+      display: flex; align-items: stretch; gap: 10px;
+    }
+    .carousel-arrow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      width: 36px; flex-shrink: 0; cursor: pointer; font-size: 16px;
+      color: #475569; display: flex; align-items: center; justify-content: center;
+      transition: background .2s, color .2s, opacity .2s;
+    }
+    .carousel-arrow:hover:not(:disabled) { background: #f1f5f9; color: #1e293b; }
+    .carousel-arrow:disabled { opacity: .35; cursor: not-allowed; }
+    .carousel-slide { flex: 1; min-width: 0; }
+    .carousel-pagination {
+      text-align: center; font-size: 12px; color: #94a3b8;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .result-meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; }
+    .result-meta-card .card-title { font-weight: 600; font-size: 13px; color: #1e293b; margin-bottom: 8px; }
+    .result-meta-card .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px; color: #475569; }
+    .result-meta-card .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .result-meta-card .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
+    .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
+    .result-meta-card.error .item-value { color: #991b1b; }
+
     .btn-download {
       background: #16a34a;
       color: #fff;
@@ -279,6 +301,36 @@ UI = """<!DOCTYPE html>
       transition: background .2s;
     }
     .btn-download:hover { background: #15803d; }
+
+    .btn-drive {
+      background: #fff;
+      color: #1a73e8;
+      border: 1.5px solid #1a73e8;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background .2s, color .2s;
+    }
+    .btn-drive:hover:not(:disabled) { background: #1a73e8; color: #fff; }
+    .btn-drive:disabled { opacity: .5; cursor: not-allowed; }
+
+    .approve-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #334155; margin-top: 8px;
+      user-select: none; cursor: pointer;
+    }
+    .approve-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+    .drive-status { font-size: 12px; margin-top: 2px; }
+    .drive-status.ok    { color: #166534; }
+    .drive-status.error { color: #991b1b; }
 
     .btn-reset {
       background: none;
@@ -314,19 +366,6 @@ UI = """<!DOCTYPE html>
     .loading-text { font-size: 15px; font-weight: 500; color: #334155; }
     .loading-sub  { font-size: 13px; color: #94a3b8; }
 
-    /* Validation warning */
-    .val-details {
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 12px;
-      color: #78350f;
-      display: none;
-    }
-    .val-details.show { display: block; }
-    .val-details ul { margin-top: 6px; padding-left: 16px; }
-
     footer {
       text-align: center;
       padding: 16px;
@@ -347,35 +386,28 @@ UI = """<!DOCTYPE html>
 </header>
 
 <main>
-  <!-- ── Columna izquierda: subir PDF ── -->
   <div class="panel">
     <div class="panel-title">
       <div class="step">1</div>
-      Subir PDF de MaintainX
+      Subir PDF(s) de MaintainX
     </div>
 
     <div class="drop-zone" id="dropZone">
-      <input type="file" id="fileInput" accept=".pdf">
+      <input type="file" id="fileInput" accept=".pdf" multiple>
       <div class="drop-icon">📄</div>
-      <div class="drop-text">Arrastrá el PDF aquí</div>
+      <div class="drop-text">Arrastrá uno o más PDF aquí</div>
       <div class="drop-hint">o hacé clic para seleccionar</div>
     </div>
 
-    <div class="file-info" id="fileInfo">
-      <span>📎</span>
-      <span class="fname" id="fileName"></span>
-      <span class="fsize" id="fileSize"></span>
-      <button class="remove-btn" id="removeBtn" title="Quitar archivo">✕</button>
-    </div>
+    <div class="file-list" id="fileList"></div>
 
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
-      Generar informe membretado
+      Generar informe(s) membretado(s)
     </button>
   </div>
 
-  <!-- ── Columna derecha: resultado ── -->
   <div class="panel">
     <div class="panel-title">
       <div class="step">2</div>
@@ -384,12 +416,12 @@ UI = """<!DOCTYPE html>
 
     <div class="result-empty" id="resultEmpty">
       <div class="icon">📋</div>
-      <p>El informe membretado aparecerá aquí<br>una vez que subas y proceses el PDF.</p>
+      <p>El/los informe(s) membretado(s) aparecerán aquí<br>una vez que subas y proceses el/los PDF.</p>
     </div>
 
     <div class="loading-overlay" id="loadingOverlay">
       <div class="spinner"></div>
-      <div class="loading-text">Procesando PDF…</div>
+      <div class="loading-text" id="loadingText">Procesando PDF…</div>
       <div class="loading-sub">Parseando datos y generando informe</div>
     </div>
 
@@ -398,16 +430,16 @@ UI = """<!DOCTYPE html>
 
       <div class="result-meta" id="resultMeta"></div>
 
-      <div class="val-details" id="valDetails">
-        <strong>Advertencias de validación:</strong>
-        <ul id="valList"></ul>
-      </div>
-
       <a class="btn-download" id="btnDownload" href="#" download>
-        ⬇️ Descargar PDF membretado
+        ⬇️ Descargar informe
       </a>
 
-      <button class="btn-reset" id="btnReset">Procesar otro PDF</button>
+      <button class="btn-drive" id="btnDrive">
+        📤 Subir aprobados a Drive
+      </button>
+      <div class="drive-status" id="driveStatus"></div>
+
+      <button class="btn-reset" id="btnReset">Procesar otro(s) PDF</button>
     </div>
   </div>
 </main>
@@ -417,23 +449,21 @@ UI = """<!DOCTYPE html>
 <script>
   const dropZone    = document.getElementById('dropZone');
   const fileInput   = document.getElementById('fileInput');
-  const fileInfo    = document.getElementById('fileInfo');
-  const fileName    = document.getElementById('fileName');
-  const fileSize    = document.getElementById('fileSize');
-  const removeBtn   = document.getElementById('removeBtn');
+  const fileList    = document.getElementById('fileList');
   const btnGenerate = document.getElementById('btnGenerate');
 
   const resultEmpty   = document.getElementById('resultEmpty');
   const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText   = document.getElementById('loadingText');
   const resultCard    = document.getElementById('resultCard');
   const resultBadge   = document.getElementById('resultBadge');
   const resultMeta    = document.getElementById('resultMeta');
-  const valDetails    = document.getElementById('valDetails');
-  const valList       = document.getElementById('valList');
   const btnDownload   = document.getElementById('btnDownload');
+  const btnDrive      = document.getElementById('btnDrive');
+  const driveStatus   = document.getElementById('driveStatus');
   const btnReset      = document.getElementById('btnReset');
 
-  let selectedFile = null;
+  let selectedFiles = [];
 
   function fmtSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -441,64 +471,78 @@ UI = """<!DOCTYPE html>
     return (bytes/1024/1024).toFixed(1) + ' MB';
   }
 
-  function setFile(file) {
-    if (!file || file.type !== 'application/pdf') {
-      alert('Por favor seleccioná un archivo PDF.');
-      return;
+  function renderFileList() {
+    fileList.innerHTML = selectedFiles.map((file, idx) => `
+      <div class="file-item">
+        <span>📎</span>
+        <span class="fname">${file.name}</span>
+        <span class="fsize">${fmtSize(file.size)}</span>
+        <button class="remove-btn" data-idx="${idx}" title="Quitar archivo">✕</button>
+      </div>
+    `).join('');
+
+    if (selectedFiles.length > 1) {
+      fileList.innerHTML += `<div class="file-list-summary">${selectedFiles.length} archivos seleccionados</div>`;
     }
-    selectedFile = file;
-    fileName.textContent = file.name;
-    fileSize.textContent = fmtSize(file.size);
-    fileInfo.classList.add('show');
-    dropZone.style.display = 'none';
-    btnGenerate.disabled = false;
+
+    fileList.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        selectedFiles.splice(idx, 1);
+        renderFileList();
+        updateGenerateState();
+      });
+    });
+  }
+
+  function updateGenerateState() {
+    btnGenerate.disabled = selectedFiles.length === 0;
     resetResult();
   }
 
-  function resetFile() {
-    selectedFile = null;
+  function addFiles(fileListInput) {
+    let rejected = false;
+    for (const file of fileListInput) {
+      if (file.type !== 'application/pdf') {
+        rejected = true;
+        continue;
+      }
+      selectedFiles.push(file);
+    }
+    if (rejected) {
+      alert('Solo se admiten archivos PDF. Se ignoraron los archivos que no lo son.');
+    }
+    renderFileList();
+    updateGenerateState();
+  }
+
+  function resetFiles() {
+    selectedFiles = [];
     fileInput.value = '';
-    fileInfo.classList.remove('show');
-    dropZone.style.display = '';
-    btnGenerate.disabled = true;
-    resetResult();
+    renderFileList();
+    updateGenerateState();
   }
 
   function resetResult() {
     resultCard.classList.remove('show');
     loadingOverlay.classList.remove('show');
     resultEmpty.style.display = '';
+    if (driveStatus) { driveStatus.textContent = ''; driveStatus.className = 'drive-status'; }
   }
 
   function showLoading() {
     resultEmpty.style.display = 'none';
     resultCard.classList.remove('show');
     loadingOverlay.classList.add('show');
+    if (selectedFiles.length > 1) {
+      loadingText.textContent = `Procesando ${selectedFiles.length} PDFs…`;
+    } else {
+      loadingText.textContent = 'Procesando PDF…';
+    }
   }
 
-  function showResult(data) {
-    loadingOverlay.classList.remove('show');
-    resultCard.classList.add('show');
-
-    if (data.ok) {
-      resultBadge.className = 'result-badge success';
-      resultBadge.innerHTML = '✅ Informe generado correctamente';
-    } else if (data.warning) {
-      resultBadge.className = 'result-badge warning';
-      resultBadge.innerHTML = '⚠️ Generado con advertencias de validación';
-    } else {
-      resultBadge.className = 'result-badge error';
-      resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
-      btnDownload.style.display = 'none';
-      return;
-    }
-
-    btnDownload.style.display = '';
-    btnDownload.href = data.download_url;
-    btnDownload.download = data.filename;
-
-    const m = data.meta || {};
-    resultMeta.innerHTML = [
+  function metaGridHtml(m) {
+    return [
       ['N° de orden', '#' + (m.numero_orden || '—')],
       ['Estado',      m.estado || '—'],
       ['Ubicación',   m.ubicacion || '—'],
@@ -506,18 +550,151 @@ UI = """<!DOCTYPE html>
       ['Asignados',   (m.asignados || []).join(', ') || '—'],
       ['Campos',      m.campos_completados || '—'],
     ].map(([l, v]) => `
-      <div>
-        <div class="item-label">${l}</div>
-        <div class="item-value">${v}</div>
-      </div>`).join('');
+        <div>
+          <div class="item-label">${l}</div>
+          <div class="item-value">${v}</div>
+        </div>`).join('');
+  }
 
-    if (data.warnings && data.warnings.length) {
-      valList.innerHTML = data.warnings.map(w =>
-        `<li><strong>${w.etiqueta}</strong>: "${w.valor}"</li>`
-      ).join('');
-      valDetails.classList.add('show');
+  // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
+  let carouselSlides = [];   // array de strings HTML, una por archivo
+  let carouselIndex  = 0;
+  let approvedIds    = new Set();   // file_id de tarjetas marcadas "Aprobado"
+
+  function renderCarousel() {
+    const total = carouselSlides.length;
+    if (total === 0) {
+      resultMeta.innerHTML = '';
+      return;
+    }
+    if (carouselIndex < 0) carouselIndex = 0;
+    if (carouselIndex > total - 1) carouselIndex = total - 1;
+
+    resultMeta.innerHTML = `
+      <div class="carousel">
+        <div class="carousel-track">
+          <button class="carousel-arrow" id="carouselPrev" ${carouselIndex === 0 ? 'disabled' : ''} title="Anterior">‹</button>
+          <div class="carousel-slide">${carouselSlides[carouselIndex]}</div>
+          <button class="carousel-arrow" id="carouselNext" ${carouselIndex === total - 1 ? 'disabled' : ''} title="Siguiente">›</button>
+        </div>
+        <div class="carousel-pagination">${carouselIndex + 1} / ${total}</div>
+      </div>
+    `;
+
+    const prevBtn = document.getElementById('carouselPrev');
+    const nextBtn = document.getElementById('carouselNext');
+    if (prevBtn) prevBtn.addEventListener('click', () => { carouselIndex--; renderCarousel(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { carouselIndex++; renderCarousel(); });
+
+    const approveCb = document.getElementById('approveCheckbox');
+    if (approveCb) {
+      approveCb.addEventListener('change', () => {
+        const fid = approveCb.dataset.fileId;
+        if (approveCb.checked) approvedIds.add(fid);
+        else approvedIds.delete(fid);
+        updateDriveButtonState();
+      });
+    }
+  }
+
+  function approveCheckboxHtml(fileId) {
+    if (!fileId) return '';
+    const checked = approvedIds.has(fileId) ? 'checked' : '';
+    return `
+      <label class="approve-row" style="grid-column: 1 / -1;">
+        <input type="checkbox" id="approveCheckbox" data-file-id="${fileId}" ${checked}>
+        Aprobado para subir a Drive
+      </label>`;
+  }
+
+  function updateDriveButtonState() {
+    btnDrive.disabled = approvedIds.size === 0;
+    btnDrive.textContent = approvedIds.size > 0
+      ? `📤 Subir ${approvedIds.size} aprobado(s) a Drive`
+      : '📤 Subir aprobados a Drive';
+    driveStatus.textContent = '';
+    driveStatus.className = 'drive-status';
+  }
+
+  function showResult(data) {
+    loadingOverlay.classList.remove('show');
+    resultCard.classList.add('show');
+    carouselSlides = [];
+    carouselIndex = 0;
+    approvedIds = new Set();
+    btnDrive.style.display = '';
+    updateDriveButtonState();
+
+    if (data.ok) {
+      if (data.multi) {
+        const errCount = (data.errors || []).length;
+        if (errCount > 0) {
+          resultBadge.className = 'result-badge warning';
+          resultBadge.innerHTML = `✅ ${data.count} informe(s) generado(s), ${errCount} con error`;
+        } else {
+          resultBadge.className = 'result-badge success';
+          resultBadge.innerHTML = `✅ ${data.count} informes generados correctamente`;
+        }
+      } else {
+        resultBadge.className = 'result-badge success';
+        resultBadge.innerHTML = '✅ Informe generado correctamente';
+      }
     } else {
-      valDetails.classList.remove('show');
+      resultBadge.className = 'result-badge error';
+      resultBadge.innerHTML = '❌ ' + (data.error || 'Error al procesar');
+      btnDownload.style.display = 'none';
+      btnDrive.style.display = 'none';
+      if (data.errors && data.errors.length) {
+        carouselSlides = data.errors.map(e => `
+          <div class="result-meta-card error">
+            <div class="card-title">${e.archivo}</div>
+            <div class="item-value">${e.error}</div>
+          </div>`);
+      }
+      renderCarousel();
+      return;
+    }
+
+    btnDownload.style.display = '';
+    btnDownload.href = data.download_url;
+    btnDownload.download = data.filename;
+    btnDownload.innerHTML = data.multi
+      ? '⬇️ Descargar .zip con informes membretados'
+      : '⬇️ Descargar PDF membretado';
+
+    if (data.multi) {
+      carouselSlides = (data.items || []).map(item => {
+        const m = item.meta || {};
+        const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
+        return `
+          <div class="result-meta-card">
+            <div class="card-title">${titulo}</div>
+            <div class="card-grid">${metaGridHtml(m)}</div>
+            ${approveCheckboxHtml(item.file_id)}
+          </div>`;
+      });
+
+      if (data.errors && data.errors.length) {
+        carouselSlides = carouselSlides.concat(data.errors.map(e => `
+          <div class="result-meta-card error">
+            <div class="card-title">⚠️ ${e.archivo}</div>
+            <div class="item-value">${e.error}</div>
+          </div>`));
+      }
+
+      renderCarousel();
+    } else {
+      resultMeta.innerHTML = metaGridHtml(data.meta || {})
+        + approveCheckboxHtml(data.file_id);
+      const approveCb = document.getElementById('approveCheckbox');
+      if (approveCb) {
+        approveCb.addEventListener('change', () => {
+          const fid = approveCb.dataset.fileId;
+          if (approveCb.checked) approvedIds.add(fid);
+          else approvedIds.delete(fid);
+          updateDriveButtonState();
+        });
+      }
     }
   }
 
@@ -529,26 +706,24 @@ UI = """<!DOCTYPE html>
     dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('over'); })
   );
   dropZone.addEventListener('drop', e => {
-    const file = e.dataTransfer.files[0];
-    if (file) setFile(file);
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   });
   fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) setFile(fileInput.files[0]);
+    if (fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = '';
   });
 
-  removeBtn.addEventListener('click', resetFile);
-
   btnReset.addEventListener('click', () => {
-    resetFile();
+    resetFiles();
   });
 
   btnGenerate.addEventListener('click', async () => {
-    if (!selectedFile) return;
+    if (!selectedFiles.length) return;
     showLoading();
     btnGenerate.disabled = true;
 
     const form = new FormData();
-    form.append('pdf', selectedFile);
+    selectedFiles.forEach(file => form.append('pdf', file));
     form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
@@ -561,13 +736,46 @@ UI = """<!DOCTYPE html>
       btnGenerate.disabled = false;
     }
   });
+
+  btnDrive.addEventListener('click', async () => {
+    if (approvedIds.size === 0) return;
+    btnDrive.disabled = true;
+    driveStatus.className = 'drive-status';
+    driveStatus.textContent = '⏳ Subiendo a Drive…';
+
+    try {
+      const resp = await fetch('/upload-to-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: Array.from(approvedIds) }),
+      });
+      const data = await resp.json();
+
+      if (resp.status === 501) {
+        driveStatus.className = 'drive-status error';
+        driveStatus.textContent = '⚠️ ' + data.error;
+      } else if (data.ok) {
+        driveStatus.className = 'drive-status ok';
+        driveStatus.textContent = `✅ ${data.results.length} archivo(s) subido(s) a Drive correctamente.`;
+      } else {
+        const failed = (data.results || []).filter(r => !r.ok);
+        driveStatus.className = 'drive-status error';
+        driveStatus.textContent = `⚠️ ${failed.length} archivo(s) fallaron: `
+          + failed.map(f => `${f.filename || f.file_id} (${f.error})`).join(', ');
+      }
+    } catch (err) {
+      driveStatus.className = 'drive-status error';
+      driveStatus.textContent = '❌ Error de red: ' + err.message;
+    } finally {
+      btnDrive.disabled = approvedIds.size === 0;
+    }
+  });
 </script>
 </body>
 </html>"""
 
+
 @app.route("/")
-
-
 def index():
     return render_template_string(UI)
 
@@ -575,59 +783,120 @@ def index():
 _pdf_store: dict = {}
 
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    if "pdf" not in request.files:
-        return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
-
-    pdf_bytes = request.files["pdf"].read()
-    observaciones = request.form.get("observaciones", "").strip()
-    if not pdf_bytes:
-        return jsonify({"error": "El archivo está vacío."}), 400
-
-    # 1. Parsear
+def process_one_pdf(pdf_bytes: bytes):
+    """Procesa un PDF de MaintainX y retorna (filename, pdf_out_bytes, meta).
+    Lanza excepción con mensaje descriptivo si algo falla."""
     try:
         data = parse_pdf(pdf_bytes)
     except Exception as exc:
-        return jsonify({"error": f"Error al parsear el PDF: {exc}"}), 422
+        raise RuntimeError(f"Error al parsear el PDF: {exc}")
 
-    # 2. Renderizar HTML
     try:
         html_b64 = render_html(data, str(TEMPLATE_PATH), str(MEMBRETE_PATH))
         html_bytes = base64.b64decode(html_b64)
     except Exception as exc:
-        return jsonify({"error": f"Error al renderizar el HTML: {exc}"}), 500
+        raise RuntimeError(f"Error al renderizar el HTML: {exc}")
 
-    # 3. Convertir a PDF vía Playwright (Chromium) — contenido sin membrete
     try:
         pdf_raw = html_to_pdf(html_bytes)
     except Exception as exc:
-        return jsonify({"error": f"Error al generar PDF con Playwright: {exc}"}), 500
+        raise RuntimeError(f"Error al generar PDF con Playwright: {exc}")
 
-    # 4. Aplicar membrete como overlay en cada página (PyMuPDF)
     try:
         pdf_out = apply_letterhead(pdf_raw, str(MEMBRETE_PATH))
     except Exception as exc:
-        return jsonify({"error": f"Error al aplicar membrete: {exc}"}), 500
+        raise RuntimeError(f"Error al aplicar membrete: {exc}")
 
-    # 4. Guardar PDF temporalmente y servir URL de descarga
     numero   = data.get("meta", {}).get("numero_orden", "informe")
     filename = f"informe-{numero}.pdf"
+    return filename, pdf_out, data.get("meta", {})
 
-    # Guardamos en memoria con un ID de sesión simple
-    import hashlib, time
-    file_id = hashlib.md5(f"{numero}{time.time()}".encode()).hexdigest()[:12]
-    _pdf_store[file_id] = (filename, pdf_out)
 
-    val = data.get("validacion", {})
-    warnings = val.get("valores_fuera_de_conjunto", [])
+@app.route("/generate", methods=["POST"])
+def generate():
+    files = request.files.getlist("pdf")
+    if not files:
+        return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
+
+    import hashlib, time, zipfile
+
+    # ─── Un solo archivo: comportamiento original (PDF directo) ───────────
+    if len(files) == 1:
+        original_name = files[0].filename or "archivo.pdf"
+        pdf_bytes = files[0].read()
+        if not pdf_bytes:
+            return jsonify({"error": "El archivo está vacío."}), 400
+
+        try:
+            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 500
+
+        file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
+        _pdf_store[file_id] = (filename, pdf_out, original_name)
+
+        return jsonify({
+            "ok":           True,
+            "multi":        False,
+            "meta":         meta,
+            "filename":     filename,
+            "file_id":      file_id,
+            "download_url": f"/download/{file_id}",
+        })
+
+    # ─── Múltiples archivos: procesar en cola y empaquetar en .zip ─────────
+    results = []   # [(filename, pdf_bytes)]
+    items   = []   # [{"filename": ..., "meta": {...}}]
+    errors  = []   # [{"archivo": nombre_original, "error": mensaje}]
+
+    for f in files:
+        original_name = f.filename or "archivo.pdf"
+        pdf_bytes = f.read()
+        if not pdf_bytes:
+            errors.append({"archivo": original_name, "error": "Archivo vacío"})
+            continue
+        try:
+            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+            # Evitar nombres duplicados dentro del zip
+            base, ext = os.path.splitext(filename)
+            candidate = filename
+            n = 1
+            existentes = {r[0] for r in results}
+            while candidate in existentes:
+                candidate = f"{base}_{n}{ext}"
+                n += 1
+            results.append((candidate, pdf_out))
+            individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
+            _pdf_store[individual_id] = (candidate, pdf_out, original_name)
+            items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
+        except RuntimeError as exc:
+            errors.append({"archivo": original_name, "error": str(exc)})
+
+    if not results:
+        return jsonify({
+            "ok":     False,
+            "error":  "No se pudo procesar ningún archivo.",
+            "errors": errors,
+        }), 500
+
+    # Crear .zip en memoria
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, pdf_bytes_ in results:
+            zf.writestr(fname, pdf_bytes_)
+    zip_buf.seek(0)
+
+    zip_filename = f"informes-membretados-{int(time.time())}.zip"
+    file_id = hashlib.md5(f"{zip_filename}{time.time()}".encode()).hexdigest()[:12]
+    _pdf_store[file_id] = (zip_filename, zip_buf.getvalue(), zip_filename)
 
     return jsonify({
         "ok":           True,
-        "warning":      bool(warnings),
-        "meta":         data.get("meta", {}),
-        "warnings":     warnings,
-        "filename":     filename,
+        "multi":        True,
+        "count":        len(results),
+        "items":        items,
+        "errors":       errors,
+        "filename":     zip_filename,
         "download_url": f"/download/{file_id}",
     })
 
@@ -636,20 +905,66 @@ def generate():
 def download(file_id):
     if file_id not in _pdf_store:
         return "Archivo no encontrado o expirado.", 404
-    filename, pdf_bytes = _pdf_store[file_id]
+    filename, file_bytes, _ = _pdf_store[file_id]
+    mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
     return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
+        io.BytesIO(file_bytes),
+        mimetype=mimetype,
         as_attachment=True,
         download_name=filename,
     )
+
+
+@app.route("/upload-to-drive", methods=["POST"])
+def upload_to_drive():
+    """Reenvía los PDFs aprobados (por file_id) a un webhook de n8n,
+    que se encarga de subirlos a Google Drive.
+    """
+    webhook_url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        return jsonify({
+            "ok": False,
+            "error": "La integración con n8n aún no está configurada "
+                     "(falta la variable de entorno N8N_WEBHOOK_URL).",
+        }), 501
+
+    payload = request.get_json(silent=True) or {}
+    file_ids = payload.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"ok": False, "error": "No se indicó ningún archivo aprobado."}), 400
+
+    import requests
+
+    results = []
+    for fid in file_ids:
+        if fid not in _pdf_store:
+            results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
+            continue
+
+        filename, file_bytes, original_name = _pdf_store[fid]
+        try:
+            resp = requests.post(
+                webhook_url,
+                files={"data": (original_name, file_bytes, "application/pdf")},
+                data={"filename": original_name},
+                timeout=60,
+            )
+            if resp.ok:
+                results.append({"file_id": fid, "filename": original_name, "ok": True})
+            else:
+                results.append({
+                    "file_id": fid, "filename": original_name, "ok": False,
+                    "error": f"n8n respondió con estado {resp.status_code}",
+                })
+        except Exception as exc:
+            results.append({"file_id": fid, "filename": original_name, "ok": False, "error": str(exc)})
+
+    all_ok = all(r["ok"] for r in results)
+    return jsonify({"ok": all_ok, "results": results})
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print("\n  CHG Informe Membretado")
     print("  -------------------------------------")
-    print(f"  Servidor:  http://localhost:{port}")
-    print("  Motor PDF: Playwright (Chromium)")
-    print("  -------------------------------------\n")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    print(f"  Servidor:
