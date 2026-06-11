@@ -118,15 +118,22 @@ def parse_pdf(pdf_bytes):
                     i += 1
                     continue
 
-                if text == "Fecha y Hora de ingreso:":
+if text == "Fecha y Hora de ingreso:":
                     if i + 1 < len(lines):
-                        meta["fecha_hora_ingreso"] = lines[i + 1]["text"]
+                        meta["fecha_hora_ingreso"] = lines[i+1]["text"]
                         i += 2
                     else:
                         i += 1
-                    # Transición a SECTIONS — la próxima línea bold inicia sección
                     state = "SECTIONS"
                     pending_left = pending_right = None
+                    continue
+
+                # --- NUEVO: Disparador para la Orden #488 y similares ---
+                if text in ["INFORME DE MANTENIMIENTO PREVENTIVO", "Limpieza general"]:
+                    state = "SECTIONS"
+                    pending_left = pending_right = None
+                    if text == "INFORME DE MANTENIMIENTO PREVENTIVO":
+                        i += 1
                     continue
 
                 col_is_left = entry["x"] < COL_THRESHOLD
