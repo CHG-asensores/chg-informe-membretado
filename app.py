@@ -830,6 +830,7 @@ def generate():
 
     # ─── Un solo archivo: comportamiento original (PDF directo) ───────────
     if len(files) == 1:
+        original_name = files[0].filename or "archivo.pdf"
         pdf_bytes = files[0].read()
         if not pdf_bytes:
             return jsonify({"error": "El archivo está vacío."}), 400
@@ -840,7 +841,7 @@ def generate():
             return jsonify({"error": str(exc)}), 500
 
         file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
-        _pdf_store[file_id] = (filename, pdf_out)
+        _pdf_store[file_id] = (filename, pdf_out, original_name)
 
         return jsonify({
             "ok":           True,
@@ -874,7 +875,7 @@ def generate():
                 n += 1
             results.append((candidate, pdf_out))
             individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
-            _pdf_store[individual_id] = (candidate, pdf_out)
+            _pdf_store[individual_id] = (candidate, pdf_out, original_name)
             items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
         except RuntimeError as exc:
             errors.append({"archivo": original_name, "error": str(exc)})
@@ -895,7 +896,7 @@ def generate():
 
     zip_filename = f"informes-membretados-{int(time.time())}.zip"
     file_id = hashlib.md5(f"{zip_filename}{time.time()}".encode()).hexdigest()[:12]
-    _pdf_store[file_id] = (zip_filename, zip_buf.getvalue())
+    _pdf_store[file_id] = (zip_filename, zip_buf.getvalue(), zip_filename)
 
     return jsonify({
         "ok":           True,
@@ -912,7 +913,7 @@ def generate():
 def download(file_id):
     if file_id not in _pdf_store:
         return "Archivo no encontrado o expirado.", 404
-    filename, file_bytes = _pdf_store[file_id]
+    filename, file_bytes, _ = _pdf_store[file_id]
     mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
     return send_file(
         io.BytesIO(file_bytes),
@@ -951,23 +952,23 @@ def upload_to_drive():
             results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
             continue
 
-        filename, file_bytes = _pdf_store[fid]
+        filename, file_bytes, original_name = _pdf_store[fid]
         try:
             resp = requests.post(
                 webhook_url,
-                files={"data": (filename, file_bytes, "application/pdf")},
-                data={"filename": filename},
+                files={"data": (original_name, file_bytes, "application/pdf")},
+                data={"filename": original_name},
                 timeout=60,
             )
             if resp.ok:
-                results.append({"file_id": fid, "filename": filename, "ok": True})
+                results.append({"file_id": fid, "filename": original_name, "ok": True})
             else:
                 results.append({
-                    "file_id": fid, "filename": filename, "ok": False,
+                    "file_id": fid, "filename": original_name, "ok": False,
                     "error": f"n8n respondió con estado {resp.status_code}",
                 })
         except Exception as exc:
-            results.append({"file_id": fid, "filename": filename, "ok": False, "error": str(exc)})
+            results.append({"file_id": fid, "filename": original_name, "ok": False, "error": str(exc)})
 
     all_ok = all(r["ok"] for r in results)
     return jsonify({"ok": all_ok, "results": results})
