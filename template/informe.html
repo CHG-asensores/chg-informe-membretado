@@ -104,29 +104,15 @@
   .firma-img { max-width: 65mm; max-height: 25mm; display: block; }
   .firma-texto { font-size: 7.5pt; color: #6b7280; font-style: italic; margin-top: 2mm; }
 
-  /* ═══ Info de orden / Comentarios / Historial ═══ */
-  .info-section { margin-top: 6mm; page-break-inside: avoid; }
-  .info-section-titulo {
+  /* ═══ Comentarios ═══ */
+  .comentarios-section { margin-top: 6mm; page-break-inside: avoid; }
+  .comentarios-titulo {
     font-size: 9pt; font-weight: bold; color: #1a1a1a; text-transform: uppercase;
     letter-spacing: 0.05em; border-bottom: 1px solid #9ca3af; padding-bottom: 1mm; margin-bottom: 3mm;
   }
-  .info-campo { font-size: 9pt; color: #1a1a1a; margin-bottom: 1.5mm; line-height: 1.5; }
   .comentario-bloque { margin-bottom: 4mm; }
   .comentario-texto { font-size: 9pt; color: #1a1a1a; line-height: 1.5; margin-bottom: 1mm; }
   .comentario-autor { font-size: 8pt; color: #4b5563; font-style: italic; }
-  .historial-item { display: flex; gap: 4mm; margin-bottom: 2mm; align-items: flex-start; }
-  .historial-fecha { font-size: 8pt; color: #4b5563; white-space: nowrap; min-width: 28mm; }
-  .historial-accion { font-size: 9pt; color: #1a1a1a; }
-
-  /* ═══ Página firma manual ═══ */
-  .firma-manual-page { margin-top: 4mm; page-break-inside: avoid; }
-  .firma-manual-box {
-    margin-top: 6mm;
-    display: flex; flex-direction: column; align-items: flex-end; gap: 6mm;
-  }
-  .firma-manual-linea { width: 80mm; }
-  .firma-manual-label { font-size: 9pt; color: #1a1a1a; text-align: right; margin-top: 1mm; }
-  .firma-manual-hr { border: none; border-top: 1px solid #1a1a1a; width: 80mm; }
 </style>
 </head>
 <body>
@@ -304,24 +290,6 @@
   </div>
   {% endif %}
 
-  <!-- Observaciones para CHG -->
-  {% set obs_chg = data.observaciones.get('para_chg', '') %}
-  <div class="obs-row">
-    <div class="obs-label">Observaciones para CHG Ascensores:</div>
-    {% if obs_chg and obs_chg != '-' %}
-      {% set lineas_chg = obs_chg.split('\n') %}
-      {% if lineas_chg|length > 1 %}
-        <ul class="obs-valor-list">
-          {% for linea in lineas_chg %}{% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}{% endfor %}
-        </ul>
-      {% else %}
-        <div class="obs-valor">{{ obs_chg }}</div>
-      {% endif %}
-    {% else %}
-      <div class="obs-valor">-</div>
-    {% endif %}
-  </div>
-
   <!-- Firma digital -->
   <div class="obs-row">
     <div class="obs-label">Firma del cliente:</div>
@@ -345,20 +313,10 @@
   </div>
   {% endif %}
 
-  <!-- Información de orden de trabajo -->
-  {% if data.info_orden.get('campos') %}
-  <div class="info-section">
-    <div class="info-section-titulo">Información de Orden de Trabajo</div>
-    {% for campo in data.info_orden.campos %}
-    <div class="info-campo">{{ campo }}</div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
   <!-- Comentarios -->
   {% if data.comentarios %}
-  <div class="info-section">
-    <div class="info-section-titulo">Comentarios</div>
+  <div class="comentarios-section">
+    <div class="comentarios-titulo">Comentarios</div>
     {% for c in data.comentarios %}
     <div class="comentario-bloque">
       <div class="comentario-texto">{{ c.texto }}</div>
@@ -368,32 +326,7 @@
   </div>
   {% endif %}
 
-  <!-- Historial -->
-  {% if data.historial %}
-  <div class="info-section">
-    <div class="info-section-titulo">Historial de Orden de Trabajo</div>
-    {% for h in data.historial %}
-    <div class="historial-item">
-      <div class="historial-fecha">{{ h.fecha }}</div>
-      <div class="historial-accion">{{ h.accion }}</div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-</div>
 
-<!-- ═══ PÁGINA DE FIRMA MANUAL ═══ -->
-<div class="firma-manual-page">
-  <div class="firma-manual-box">
-    <div class="firma-manual-linea">
-      <hr class="firma-manual-hr">
-      <div class="firma-manual-label">Firmado por</div>
-    </div>
-    <div class="firma-manual-linea">
-      <hr class="firma-manual-hr">
-      <div class="firma-manual-label">Fecha</div>
-    </div>
-  </div>
 </div>
 
 </body>
