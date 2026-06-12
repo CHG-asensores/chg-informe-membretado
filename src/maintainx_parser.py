@@ -96,6 +96,16 @@ def parse_pdf(pdf_bytes):
     valores_invalidos = []
     current_comentario = None
 
+    # ── Estado a nivel de documento para asignación de fotos del repuesto ──
+    # Se activa al encontrar el título "Detalles del repuesto a reparar o
+    # cambiar" (en cualquier página) y permanece activo para páginas
+    # posteriores, ya que las fotos del repuesto pueden quedar en una página
+    # distinta a la del título (p.ej. justo antes de "Firma del cliente").
+    seen_repuesto_marker = False
+    # Cantidad máxima de fotos de repuesto esperadas (se intenta leer de
+    # "Fotos del repuesto a reparar (máximo N):"; por defecto 3).
+    repuesto_photos_max  = 3
+
     for page_num, page in enumerate(doc):
         lines = extract_lines(page)
 
@@ -104,7 +114,18 @@ def parse_pdf(pdf_bytes):
         for entry in lines:
             if entry["text"] == "Detalles del repuesto a reparar o cambiar" and entry["bold"]:
                 repuesto_start_y = entry["y"]
+                seen_repuesto_marker = True
                 break
+
+        # Detectar y_position de "Firma del cliente:" / "Firmado por ..." en
+        # esta página, para poder distinguir las fotos del repuesto (que
+        # aparecen ANTES de la firma cuando comparten página) de la propia
+        # imagen de la firma.
+        firma_text_y = None
+        for entry in lines:
+            if entry["text"] == "Firma del cliente:" or re.match(r"^Firmado por .+", entry["text"]):
+                if firma_text_y is None or entry["y"] < firma_text_y:
+                    firma_text_y = entry["y"]
 
         i = 0
         while i < len(lines):
@@ -263,6 +284,7 @@ def parse_pdf(pdf_bytes):
             elif state == "OBSERVATIONS":
                 if text == "Detalles del repuesto a reparar o cambiar" and is_bold:
                     state = "REPUESTO"
+                    seen_repuesto_marker = True
                     pending_label = None
                     i += 1; continue
                 if text == "Evaluación final:":
@@ -305,6 +327,9 @@ def parse_pdf(pdf_bytes):
                     i += 1; continue
                 if re.match(r"^Fotos del repuesto a reparar", text, re.I):
                     pending_label = "fotos_repuesto"
+                    m2 = re.search(r"máximo\s*(\d+)", text, re.I)
+                    if m2:
+                        repuesto_photos_max = int(m2.group(1))
                     i += 1; continue
                 # Si en una nueva página aparecen directamente las etiquetas
                 # de Observaciones (sin el encabezado bold "Observaciones y
@@ -387,12 +412,26 @@ def parse_pdf(pdf_bytes):
                 img_ext  = base_img.get("ext", "jpeg")
                 img_y    = img_pos["y"]
 
-                if has_firma and repuesto_start_y is None:
-                    if not firma["data_base64"]:
-                        firma["data_base64"] = img_b64
-                        firma["ext"]         = img_ext
-                elif repuesto_start_y is not None and img_y > repuesto_start_y:
-                    obs["detalles_repuesto"]["fotos"].append({"data_base64": img_b64, "ext": img_ext})
+                repuesto_fotos = obs["detalles_repuesto"]["fotos"]
+
+                if repuesto_start_y is not None and img_y > repuesto_start_y:
+                    # Caso clásico: el título "Detalles del repuesto..." y sus
+                    # fotos están en la misma página, las fotos quedan debajo
+                    # del título.
+                    repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
+                elif (
+                    seen_repuesto_marker
+                    and len(repuesto_fotos) < repuesto_photos_max
+                    and (firma_text_y is None or img_y < firma_text_y)
+                ):
+                    # Caso de continuación: el título "Detalles del repuesto..."
+                    # quedó en una página anterior y las fotos del repuesto
+                    # aparecen en esta página, antes de "Firma del cliente" /
+                    # "Firmado por" (si existe en esta página).
+                    repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
+                elif has_firma and not firma["data_base64"]:
+                    firma["data_base64"] = img_b64
+                    firma["ext"]         = img_ext
                 else:
                     for foto in fotos:
                         if not foto["data_base64"]:
