@@ -100,9 +100,9 @@
     font-size: 10pt; color: #1a1a1a; white-space: pre-line; line-height: 1.8;
     margin-bottom: 3mm;
   }
-  .repuesto-fotos { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 2mm; }
-  .repuesto-fotos.una-foto .repuesto-foto-img { width: 100%; }
-  .repuesto-foto-img { width: calc(50% - 1.5mm); max-height: 32mm; object-fit: cover; border: 2px solid #dbeafe; border-radius: 3px; display: block; }
+  .repuesto-fotos { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 2mm; justify-content: flex-start; }
+  .repuesto-fotos.una-foto .repuesto-foto-img { width: auto; max-width: 75%; }
+  .repuesto-foto-img { width: calc(50% - 1.5mm); max-height: 75mm; object-fit: contain; background: #f9fafb; border: 2px solid #dbeafe; border-radius: 3px; display: block; }
 
   /* ═══ Firma ═══ */
   .firma-box {
