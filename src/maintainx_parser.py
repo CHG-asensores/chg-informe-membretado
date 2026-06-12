@@ -420,14 +420,19 @@ def parse_pdf(pdf_bytes):
                     # del título.
                     repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
                 elif (
-                    seen_repuesto_marker
+                    repuesto_start_y is None
+                    and seen_repuesto_marker
                     and len(repuesto_fotos) < repuesto_photos_max
                     and (firma_text_y is None or img_y < firma_text_y)
                 ):
                     # Caso de continuación: el título "Detalles del repuesto..."
-                    # quedó en una página anterior y las fotos del repuesto
-                    # aparecen en esta página, antes de "Firma del cliente" /
-                    # "Firmado por" (si existe en esta página).
+                    # quedó en una página anterior (no en esta) y las fotos del
+                    # repuesto aparecen en esta página, antes de "Firma del
+                    # cliente" / "Firmado por" (si existe en esta página).
+                    # La condición "repuesto_start_y is None" evita que, en la
+                    # página donde SÍ está el título, las fotos de inspección
+                    # que aparecen ANTES del título (y por tanto no cumplen la
+                    # condición 1) se confundan con fotos del repuesto.
                     repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
                 elif has_firma and not firma["data_base64"]:
                     firma["data_base64"] = img_b64
