@@ -39,14 +39,6 @@
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
 
-  /* ═══ Seguimiento ═══ */
-  .seguimiento-bloque {
-    margin: 4mm 0; padding: 3mm 4mm;
-    background: #f8fafc; border-left: 3px solid #94a3b8; border-radius: 2px;
-  }
-  .seguimiento-titulo { font-size: 10pt; font-weight: bold; color: #475569; margin-bottom: 1mm; }
-  .seguimiento-contenido { font-size: 9.5pt; color: #64748b; font-style: italic; white-space: pre-line; }
-
   /* ═══ Procedimiento ═══ */
   .procedimiento-bloque { margin: 4mm 0 3mm 0; }
   .procedimiento-label { font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1mm; }
@@ -210,16 +202,6 @@
     <div class="meta-value bold">{{ data.meta.get('activo', '') }}</div>
   </div>
 </div>
-
-<!-- ═══ SEGUIMIENTO ═══ -->
-{% if data.seguimiento.get('titulo') %}
-<div class="seguimiento-bloque">
-  <div class="seguimiento-titulo">{{ data.seguimiento.titulo }}</div>
-  {% if data.seguimiento.get('contenido') %}
-  <div class="seguimiento-contenido">{{ data.seguimiento.contenido }}</div>
-  {% endif %}
-</div>
-{% endif %}
 
 <!-- ═══ PROCEDIMIENTO ═══ -->
 <div class="procedimiento-bloque">
