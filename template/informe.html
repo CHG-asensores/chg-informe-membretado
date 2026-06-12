@@ -102,7 +102,6 @@
     display: inline-block; min-width: 75mm; min-height: 30mm; margin-top: 2mm;
   }
   .firma-img { max-width: 65mm; max-height: 25mm; display: block; }
-  .firma-texto { font-size: 7.5pt; color: #6b7280; font-style: italic; margin-top: 2mm; }
 
   /* ═══ Comentarios ═══ */
   .comentarios-section { margin-top: 6mm; page-break-inside: avoid; }
@@ -298,7 +297,6 @@
       <img class="firma-img"
            src="data:image/{{ data.firma.get('ext', 'png') }};base64,{{ data.firma.data_base64 }}"
            alt="Firma">
-      {% if data.firma.get('texto') %}<div class="firma-texto">{{ data.firma.texto }}</div>{% endif %}
     </div>
     {% else %}
     <div class="firma-box"></div>
