@@ -10,6 +10,7 @@ Uso:
 import base64
 import io
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -27,6 +28,66 @@ app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024  # 150 MB (varios PDFs)
 BASE_DIR      = Path(__file__).parent
 TEMPLATE_PATH = BASE_DIR / "template" / "informe.html"
 MEMBRETE_PATH = BASE_DIR / "template" / "assets" / "membrete.png"
+
+
+# ─── Nombre de archivo de salida ──────────────────────────────────────────
+# Formato requerido: "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO} {N° INFORME}"
+# Ejemplo:           "INF - MANT. JUNIO EDIF. DEL PARQUE 340"
+
+MESES_ES = {
+    1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
+    5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
+    9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE",
+}
+
+
+def extraer_nombre_edificio(activo: str) -> str:
+    """A partir del campo ACTIVO (p.ej. "E. Tradiciones Prime - Ascensor 1")
+    extrae solo el nombre del edificio (p.ej. "TRADICIONES PRIME").
+
+    Quita el prefijo "E." / "E " y el sufijo " - Ascensor N" / " - Monta Auto N"
+    (con o sin número), sin importar mayúsculas/minúsculas.
+    """
+    nombre = (activo or "").strip()
+    # Quitar prefijo tipo "E." o "E " al inicio
+    nombre = re.sub(r"^\s*E\.?\s*", "", nombre, flags=re.IGNORECASE)
+    # Quitar sufijo "- Ascensor N" / "- Monta Auto N" (y variantes con espacios)
+    nombre = re.sub(r"\s*-\s*Ascensor.*$", "", nombre, flags=re.IGNORECASE)
+    nombre = re.sub(r"\s*-\s*Monta\s*Auto.*$", "", nombre, flags=re.IGNORECASE)
+    return nombre.strip().upper()
+
+
+def extraer_mes(meta: dict) -> str:
+    """Determina el mes (en español, mayúsculas) a partir de la fecha de
+    ingreso del informe. Si no se puede determinar, usa el mes actual."""
+    fecha_ingreso = meta.get("fecha_hora_ingreso", "") or ""
+    m = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{4})", fecha_ingreso)
+    if m:
+        mes_num = int(m.group(2))
+        if mes_num in MESES_ES:
+            return MESES_ES[mes_num]
+
+    import datetime
+    return MESES_ES.get(datetime.date.today().month, "")
+
+
+def build_output_filename(meta: dict) -> str:
+    """Construye el nombre de salida del PDF según el formato:
+    "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO} {N° INFORME}.pdf"
+    """
+    numero      = (meta.get("numero_orden", "") or "").strip()
+    nombre_edif = extraer_nombre_edificio(meta.get("activo", ""))
+    mes         = extraer_mes(meta)
+
+    partes = ["INF - MANT.", mes, "EDIF."]
+    if nombre_edif:
+        partes.append(nombre_edif)
+    if numero:
+        partes.append(numero)
+
+    nombre_archivo = " ".join(p for p in partes if p)
+    nombre_archivo = re.sub(r"\s+", " ", nombre_archivo).strip()
+    return f"{nombre_archivo}.pdf"
 
 
 def html_to_pdf(html_bytes: bytes) -> bytes:
@@ -815,9 +876,9 @@ def process_one_pdf(pdf_bytes: bytes):
     except Exception as exc:
         raise RuntimeError(f"Error al aplicar membrete: {exc}")
 
-    numero   = data.get("meta", {}).get("numero_orden", "informe")
-    filename = f"informe-{numero}.pdf"
-    return filename, pdf_out, data.get("meta", {})
+    meta     = data.get("meta", {})
+    filename = build_output_filename(meta)
+    return filename, pdf_out, meta
 
 
 @app.route("/generate", methods=["POST"])
@@ -841,7 +902,7 @@ def generate():
             return jsonify({"error": str(exc)}), 500
 
         file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
-        _pdf_store[file_id] = (filename, pdf_out, original_name)
+        _pdf_store[file_id] = (filename, pdf_out, filename)
 
         return jsonify({
             "ok":           True,
@@ -875,7 +936,7 @@ def generate():
                 n += 1
             results.append((candidate, pdf_out))
             individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
-            _pdf_store[individual_id] = (candidate, pdf_out, original_name)
+            _pdf_store[individual_id] = (candidate, pdf_out, candidate)
             items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
         except RuntimeError as exc:
             errors.append({"archivo": original_name, "error": str(exc)})
@@ -952,23 +1013,23 @@ def upload_to_drive():
             results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
             continue
 
-        filename, file_bytes, original_name = _pdf_store[fid]
+        filename, file_bytes, drive_name = _pdf_store[fid]
         try:
             resp = requests.post(
                 webhook_url,
-                files={"data": (original_name, file_bytes, "application/pdf")},
-                data={"filename": original_name},
+                files={"data": (drive_name, file_bytes, "application/pdf")},
+                data={"filename": drive_name},
                 timeout=60,
             )
             if resp.ok:
-                results.append({"file_id": fid, "filename": original_name, "ok": True})
+                results.append({"file_id": fid, "filename": drive_name, "ok": True})
             else:
                 results.append({
-                    "file_id": fid, "filename": original_name, "ok": False,
+                    "file_id": fid, "filename": drive_name, "ok": False,
                     "error": f"n8n respondió con estado {resp.status_code}",
                 })
         except Exception as exc:
-            results.append({"file_id": fid, "filename": original_name, "ok": False, "error": str(exc)})
+            results.append({"file_id": fid, "filename": drive_name, "ok": False, "error": str(exc)})
 
     all_ok = all(r["ok"] for r in results)
     return jsonify({"ok": all_ok, "results": results})
