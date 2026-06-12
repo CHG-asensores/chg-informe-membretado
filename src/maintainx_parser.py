@@ -245,3 +245,159 @@ def parse_pdf(pdf_bytes):
                     pending_label = "evaluacion_final"
                 elif text == "Observaciones y Recomendaciones para cliente:":
                     pending_label = "para_cliente"
+                elif text == "Observaciones para CHG Ascensores:":
+                    pending_label = "para_chg"
+                elif text == "Fecha y Hora de salida:":
+                    pending_label = "fecha_salida"
+                elif re.match(r"^Firmado por .+", text):
+                    firma["texto"] = text
+                    pending_label = None
+                elif text == "Firma del cliente:":
+                    pending_label = None
+                elif text == "INFORMACIÓN DE ORDEN DE TRABAJO":
+                    state = "INFO_ORDEN"
+                    pending_label = None
+                    i += 1; continue
+                elif pending_label:
+                    if pending_label == "evaluacion_final":
+                        obs["evaluacion_final"] = text
+                        pending_label = None
+                    elif pending_label == "para_cliente":
+                        obs["para_cliente"] = (obs["para_cliente"] + "\n" + text).strip("\n")
+                    elif pending_label == "para_chg":
+                        obs["para_chg"] = (obs["para_chg"] + "\n" + text).strip("\n")
+                    elif pending_label == "fecha_salida":
+                        meta["fecha_hora_salida"] = text
+                        pending_label = None
+
+            # ─── REPUESTO ────────────────────────────────────────────────────
+            elif state == "REPUESTO":
+                if text == "Observaciones y Recomendaciones" and is_bold:
+                    state = "OBSERVATIONS"
+                    pending_label = None
+                    i += 1; continue
+                if text == "Información de repuesto (medidas, datos técnicos):":
+                    pending_label = "info_tecnica"
+                    i += 1; continue
+                if re.match(r"^Fotos del repuesto a reparar", text, re.I):
+                    pending_label = "fotos_repuesto"
+                    i += 1; continue
+                # Si en una nueva página aparecen directamente las etiquetas
+                # de Observaciones (sin el encabezado bold "Observaciones y
+                # Recomendaciones" repetido), volver a OBSERVATIONS y procesar
+                if text in (
+                    "Observaciones y Recomendaciones para cliente:",
+                    "Observaciones para CHG Ascensores:",
+                    "Fecha y Hora de salida:",
+                    "Evaluación final:",
+                ) or re.match(r"^Firmado por .+", text) or text == "INFORMACIÓN DE ORDEN DE TRABAJO":
+                    state = "OBSERVATIONS"
+                    pending_label = None
+                    continue  # reprocesar esta línea en estado OBSERVATIONS
+                if pending_label == "info_tecnica":
+                    dr = obs["detalles_repuesto"]
+                    dr["info_tecnica"] = (dr["info_tecnica"] + "\n" + text).strip("\n")
+
+            # ─── INFO_ORDEN ───────────────────────────────────────────────────
+            elif state == "INFO_ORDEN":
+                if text == "COMENTARIOS":
+                    state = "COMENTARIOS"
+                    i += 1; continue
+                if text == "HISTORIAL DE ORDEN DE TRABAJO":
+                    state = "HISTORIAL"
+                    i += 1; continue
+                # Acumular campos de info de orden
+                info_orden["campos"].append(text)
+
+            # ─── COMENTARIOS ─────────────────────────────────────────────────
+            elif state == "COMENTARIOS":
+                if text == "HISTORIAL DE ORDEN DE TRABAJO":
+                    state = "HISTORIAL"
+                    i += 1; continue
+                # "Comentado por X el fecha" → metadato del comentario anterior
+                if re.match(r"^Comentado por .+", text):
+                    if current_comentario is not None:
+                        current_comentario["autor_fecha"] = text
+                        comentarios.append(current_comentario)
+                        current_comentario = None
+                else:
+                    if current_comentario is None:
+                        current_comentario = {"texto": text, "autor_fecha": ""}
+                    else:
+                        current_comentario["texto"] += " " + text
+
+            # ─── HISTORIAL ───────────────────────────────────────────────────
+            elif state == "HISTORIAL":
+                if text in ("Firmado por", "Fecha"):
+                    state = "DONE_HIST"
+                    i += 1; continue
+                # Líneas alternas: acción / fecha
+                if re.match(r"^\d{2}/\d{2}/\d{4}", text):
+                    if historial:
+                        historial[-1]["fecha"] = text
+                else:
+                    historial.append({"accion": text, "fecha": ""})
+
+            elif state == "DONE_HIST":
+                pass
+
+            i += 1
+
+        # Guardar comentario pendiente
+        if current_comentario is not None:
+            comentarios.append(current_comentario)
+            current_comentario = None
+
+        # ── Asignación de imágenes por posición Y ────────────────────────────
+        img_positions = get_image_positions(page)
+        page_text_raw = page.get_text()
+        has_firma = "Firma del cliente" in page_text_raw or "Firmado por" in page_text_raw
+
+        for img_pos in img_positions:
+            xref = img_pos.get("xref")
+            if xref is None:
+                continue
+            try:
+                base_img = doc.extract_image(xref)
+                img_b64  = base64.b64encode(base_img["image"]).decode("utf-8")
+                img_ext  = base_img.get("ext", "jpeg")
+                img_y    = img_pos["y"]
+
+                if has_firma and repuesto_start_y is None:
+                    if not firma["data_base64"]:
+                        firma["data_base64"] = img_b64
+                        firma["ext"]         = img_ext
+                elif repuesto_start_y is not None and img_y > repuesto_start_y:
+                    obs["detalles_repuesto"]["fotos"].append({"data_base64": img_b64, "ext": img_ext})
+                else:
+                    for foto in fotos:
+                        if not foto["data_base64"]:
+                            foto["data_base64"] = img_b64
+                            foto["ext"]         = img_ext
+                            break
+            except Exception:
+                pass
+
+    doc.close()
+
+    asignados = meta.get("asignados", [])
+    if len(asignados) > 1 and all(" " not in a for a in asignados):
+        meta["asignados"] = [" ".join(asignados)]
+
+    return {
+        "meta":        meta,
+        "secciones":   secciones,
+        "fotos":       fotos,
+        "observaciones": obs,
+        "firma":       firma,
+        "seguimiento": seguimiento,
+        "info_orden":  info_orden,
+        "comentarios": comentarios,
+        "historial":   historial,
+        "validacion": {
+            "ok":                        campos_parseados == campos_esperados and not valores_invalidos,
+            "campos_esperados":          campos_esperados,
+            "campos_parseados":          campos_parseados,
+            "valores_fuera_de_conjunto": valores_invalidos,
+        },
+    }
