@@ -44,9 +44,11 @@
   .procedimiento-label { font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1mm; }
   .titulo-principal { font-size: 14pt; font-weight: bold; color: #1d4ed8; text-decoration: underline; margin-bottom: 2mm; }
   .campos-completados {
-    display: inline-block; background: #eff6ff; border: 1px solid #bfdbfe;
-    border-radius: 4px; padding: 1mm 4mm; font-size: 9pt; color: #1d4ed8; font-weight: bold; margin-bottom: 2mm;
+    display: block; background: #fff; border: 1px solid #d1d5db;
+    border-radius: 4px; padding: 5mm; text-align: center; margin: 3mm 0 4mm 0;
   }
+  .campos-completados .campos-numero { font-size: 18pt; font-weight: bold; color: #1a1a1a; display: block; }
+  .campos-completados .campos-label { font-size: 10pt; color: #1a1a1a; display: block; margin-top: 1mm; }
   .fecha-line { font-size: 9.5pt; color: #1a1a1a; margin: 2mm 0 4mm 0; }
   .fecha-line strong { font-weight: bold; }
 
@@ -195,7 +197,10 @@
   {% endif %}
   <div class="titulo-principal">{{ data.meta.get('procedimiento', 'INFORME DE MANTENIMIENTO PREVENTIVO')|upper }}</div>
   {% if data.meta.get('campos_completados') %}
-  <div class="campos-completados">{{ data.meta.campos_completados }} Campos completados</div>
+  <div class="campos-completados">
+    <span class="campos-numero">{{ data.meta.campos_completados }}</span>
+    <span class="campos-label">Campos completados</span>
+  </div>
   {% endif %}
 </div>
 {% if data.meta.get('fecha_hora_ingreso') %}
