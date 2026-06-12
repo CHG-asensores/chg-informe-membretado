@@ -3,24 +3,77 @@ Servidor web para generar informes membretados CHG Ascensores.
 Reemplaza el workflow n8n — corre localmente sin Docker.
 
 Uso:
-    pip install flask pymupdf
+    pip install flask pymupdf jinja2 playwright
+    python -m playwright install chromium
     python app.py
 """
+import base64
 import io
 import os
 import sys
 from pathlib import Path
 
+import fitz  # PyMuPDF para overlay del membrete
 from flask import Flask, jsonify, render_template_string, request, send_file
+from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from maintainx_parser import parse_pdf
+from render_html import render_html
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024  # 150 MB (varios PDFs)
 
 BASE_DIR      = Path(__file__).parent
+TEMPLATE_PATH = BASE_DIR / "template" / "informe.html"
 MEMBRETE_PATH = BASE_DIR / "template" / "assets" / "membrete.png"
+
+
+def html_to_pdf(html_bytes: bytes) -> bytes:
+    """Renderiza HTML a PDF usando Chromium headless."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=[
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--single-process",
+            "--disable-extensions",
+        ])
+        page = browser.new_page()
+        page.set_content(html_bytes.decode("utf-8"), wait_until="networkidle")
+        pdf = page.pdf(
+            format="A4",
+            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+            print_background=True,
+            prefer_css_page_size=True,
+        )
+        browser.close()
+    return pdf
+
+
+def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
+    """Sobrepone el membrete como fondo en cada página del PDF.
+
+    insert_image con overlay=False lo coloca DETRÁS del contenido existente,
+    así el texto y elementos del informe quedan por encima del membrete.
+    Garantiza que el membrete se repita idéntico en TODAS las páginas.
+    """
+    src = fitz.open(stream=pdf_bytes, filetype="pdf")
+    with open(membrete_path, "rb") as f:
+        membrete_bytes = f.read()
+    for page in src:
+        page.insert_image(page.rect, stream=membrete_bytes, overlay=False)
+        # Texto "Generado para CHG Ascensores" en bottom-left de cada página
+        page.insert_text(
+            (40, page.rect.height - 18),
+            "Generado para CHG Ascensores",
+            fontsize=7,
+            color=(0.42, 0.45, 0.50),
+        )
+    out = src.tobytes()
+    src.close()
+    return out
+
 
 UI = """<!DOCTYPE html>
 <html lang="es">
@@ -338,6 +391,7 @@ UI = """<!DOCTYPE html>
 </header>
 
 <main>
+  <!-- ── Columna izquierda: subir PDF ── -->
   <div class="panel">
     <div class="panel-title">
       <div class="step">1</div>
@@ -360,6 +414,7 @@ UI = """<!DOCTYPE html>
     </button>
   </div>
 
+  <!-- ── Columna derecha: resultado ── -->
   <div class="panel">
     <div class="panel-title">
       <div class="step">2</div>
@@ -500,6 +555,7 @@ UI = """<!DOCTYPE html>
       ['Ubicación',   m.ubicacion || '—'],
       ['Activo',      m.activo || '—'],
       ['Asignados',   (m.asignados || []).join(', ') || '—'],
+      ['Campos',      m.campos_completados || '—'],
     ].map(([l, v]) => `
         <div>
           <div class="item-label">${l}</div>
@@ -726,27 +782,43 @@ UI = """<!DOCTYPE html>
 </html>"""
 
 @app.route("/")
+
+
 def index():
     return render_template_string(UI)
 
+
 _pdf_store: dict = {}
 
+
 def process_one_pdf(pdf_bytes: bytes):
-    """Procesa un PDF mediante estampado (Overlay) directamente con PyMuPDF."""
-    
-    with open(MEMBRETE_PATH, "rb") as f:
-        membrete_bytes = f.read()
+    """Procesa un PDF de MaintainX y retorna (filename, pdf_out_bytes, meta).
+    Lanza excepción con mensaje descriptivo si algo falla."""
+    try:
+        data = parse_pdf(pdf_bytes)
+    except Exception as exc:
+        raise RuntimeError(f"Error al parsear el PDF: {exc}")
 
     try:
-        data = parse_pdf(pdf_bytes, membrete_bytes)
+        html_b64 = render_html(data, str(TEMPLATE_PATH), str(MEMBRETE_PATH))
+        html_bytes = base64.b64decode(html_b64)
     except Exception as exc:
-        raise RuntimeError(f"Error al procesar el PDF: {exc}")
+        raise RuntimeError(f"Error al renderizar el HTML: {exc}")
 
-    pdf_out = data["stamped_pdf_bytes"]
+    try:
+        pdf_raw = html_to_pdf(html_bytes)
+    except Exception as exc:
+        raise RuntimeError(f"Error al generar PDF con Playwright: {exc}")
+
+    try:
+        pdf_out = apply_letterhead(pdf_raw, str(MEMBRETE_PATH))
+    except Exception as exc:
+        raise RuntimeError(f"Error al aplicar membrete: {exc}")
+
     numero   = data.get("meta", {}).get("numero_orden", "informe")
     filename = f"informe-{numero}.pdf"
-    
     return filename, pdf_out, data.get("meta", {})
+
 
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -756,6 +828,7 @@ def generate():
 
     import hashlib, time, zipfile
 
+    # ─── Un solo archivo: comportamiento original (PDF directo) ───────────
     if len(files) == 1:
         original_name = files[0].filename or "archivo.pdf"
         pdf_bytes = files[0].read()
@@ -779,9 +852,10 @@ def generate():
             "download_url": f"/download/{file_id}",
         })
 
-    results = []   
-    items   = []   
-    errors  = []   
+    # ─── Múltiples archivos: procesar en cola y empaquetar en .zip ─────────
+    results = []   # [(filename, pdf_bytes)]
+    items   = []   # [{"filename": ..., "meta": {...}}]
+    errors  = []   # [{"archivo": nombre_original, "error": mensaje}]
 
     for f in files:
         original_name = f.filename or "archivo.pdf"
@@ -791,6 +865,7 @@ def generate():
             continue
         try:
             filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+            # Evitar nombres duplicados dentro del zip
             base, ext = os.path.splitext(filename)
             candidate = filename
             n = 1
@@ -812,6 +887,7 @@ def generate():
             "errors": errors,
         }), 500
 
+    # Crear .zip en memoria
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fname, pdf_bytes_ in results:
@@ -832,6 +908,7 @@ def generate():
         "download_url": f"/download/{file_id}",
     })
 
+
 @app.route("/download/<file_id>")
 def download(file_id):
     if file_id not in _pdf_store:
@@ -845,13 +922,21 @@ def download(file_id):
         download_name=filename,
     )
 
+
 @app.route("/upload-to-drive", methods=["POST"])
 def upload_to_drive():
+    """Reenvía los PDFs aprobados (por file_id) a un webhook de n8n,
+    que se encarga de subirlos a Google Drive.
+
+    Configurar la variable de entorno N8N_WEBHOOK_URL con la URL del
+    webhook de n8n (nodo Webhook -> Google Drive Upload).
+    """
     webhook_url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
     if not webhook_url:
         return jsonify({
             "ok": False,
-            "error": "La integración con n8n aún no está configurada (falta la variable N8N_WEBHOOK_URL).",
+            "error": "La integración con n8n aún no está configurada "
+                     "(falta la variable de entorno N8N_WEBHOOK_URL).",
         }), 501
 
     payload = request.get_json(silent=True) or {}
@@ -894,6 +979,6 @@ if __name__ == "__main__":
     print("\n  CHG Informe Membretado")
     print("  -------------------------------------")
     print(f"  Servidor:  http://localhost:{port}")
-    print("  Motor PDF: Estampado Directo (PyMuPDF)")
+    print("  Motor PDF: Playwright (Chromium)")
     print("  -------------------------------------\n")
     app.run(host="0.0.0.0", port=port, debug=True)
