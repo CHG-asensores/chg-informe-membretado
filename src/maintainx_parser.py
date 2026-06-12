@@ -7,7 +7,7 @@ import fitz  # PyMuPDF
 
 NOISE_Y_TOP    = 45
 NOISE_Y_BOTTOM = 790
-KNOWN_VALUES   = {"Bueno", "Malo", "No Aplica", "condición estable", "Operativo", "-"}
+KNOWN_VALUES   = {"Bueno", "Malo", "No Aplica", "condición estable", "condición inestable", "Operativo", "Si Requiere", "Crítico", "-"}
 BOLD_FLAG      = 1 << 4
 
 
@@ -79,9 +79,11 @@ def parse_pdf(pdf_bytes):
         "TIEMPO ESTIMADO": "tiempo_estimado", "TIPO DE TRABAJO": "tipo_trabajo",
         "ASIGNADOS": "asignados", "CATEGORÍAS": "categorias",
         "UBICACIÓN": "ubicacion", "ACTIVO": "activo", "PROCEDIMIENTO": "procedimiento",
+        "PRIORIDAD": "prioridad",
     }
     SKIP_LINES = {"CHG Ascensores", "Campos completados",
-                  "* Indica que la pregunta es obligatoria"}
+                  "* Indica que la pregunta es obligatoria",
+                  "Generado para CHG Ascensores"}
 
     state            = "HEADER"
     current_section  = None
@@ -113,6 +115,18 @@ def parse_pdf(pdf_bytes):
             if text in SKIP_LINES:
                 i += 1
                 continue
+
+            # Líneas de paginación tipo "Página X de Y" (algunos PDFs las incluyen)
+            if re.match(r"^Página \d+ de \d+$", text, re.I):
+                i += 1
+                continue
+
+            # Etiquetas de prioridad sueltas (Alto/Medio/Bajo) antes del header,
+            # cuando aparecen como línea independiente fuera de la columna de PRIORIDAD
+            if state == "HEADER" and text in ("Alto", "Medio", "Bajo") and "prioridad" not in meta \
+                    and "estado" not in meta:
+                meta["prioridad"] = text
+                i += 1; continue
 
             # ─── HEADER ──────────────────────────────────────────────────────
             if state == "HEADER":
@@ -166,6 +180,16 @@ def parse_pdf(pdf_bytes):
                         if col_is_left: pending_left  = None
                         else:           pending_right = None
                     i += 1; continue
+
+                # ── Fallback: ninguna condición de HEADER coincidió.
+                # Esto ocurre cuando, tras el título del procedimiento, viene
+                # directamente la primera sección del checklist (p.ej.
+                # "Limpieza general") sin pasar por "Fecha y Hora de ingreso:".
+                # Se considera terminado el HEADER y se reprocesa esta misma
+                # línea ya en estado SECTIONS.
+                state = "SECTIONS"
+                pending_left = pending_right = None
+                continue
 
             # ─── SECTIONS ────────────────────────────────────────────────────
             elif state == "SECTIONS":
