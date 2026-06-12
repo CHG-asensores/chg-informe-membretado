@@ -324,19 +324,21 @@
 
   <!-- Observaciones para CHG -->
   {% set obs_chg = data.observaciones.get('para_chg', '') %}
-  {% if obs_chg and obs_chg != '-' %}
   <div class="obs-row">
     <div class="obs-label">Observaciones para CHG Ascensores:</div>
-    {% set lineas_chg = obs_chg.split('\n') %}
-    {% if lineas_chg|length > 1 %}
-      <ul class="obs-valor-list">
-        {% for linea in lineas_chg %}{% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}{% endfor %}
-      </ul>
+    {% if obs_chg and obs_chg != '-' %}
+      {% set lineas_chg = obs_chg.split('\n') %}
+      {% if lineas_chg|length > 1 %}
+        <ul class="obs-valor-list">
+          {% for linea in lineas_chg %}{% if linea.strip() %}<li>{{ linea.strip() }}</li>{% endif %}{% endfor %}
+        </ul>
+      {% else %}
+        <div class="obs-valor">{{ obs_chg }}</div>
+      {% endif %}
     {% else %}
-      <div class="obs-valor">{{ obs_chg }}</div>
+      <div class="obs-valor">-</div>
     {% endif %}
   </div>
-  {% endif %}
 
   <!-- Firma digital -->
   <div class="obs-row">
