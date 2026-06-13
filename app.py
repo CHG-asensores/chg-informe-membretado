@@ -41,14 +41,14 @@ MESES_ES = {
 }
 
 
-def extraer_nombre_edificio(ubicacion: str) -> str:
-    """A partir del campo UBICACION (p.ej. "Edificio Alzadia 215" o
-    "Edificio Alzadia") extrae el nombre en mayúsculas conservando el
-    número si aparece (p.ej. "ALZADIA 215" o "ALZADIA").
-    Quita el prefijo "Edificio" / "Edif." y nada más.
+def extraer_nombre_edificio(activo: str) -> str:
+    """A partir del campo ACTIVO (p.ej. "E. Alzadia - Ascensor 1" o
+    "E. Santa Maria - Montacarga 1") extrae el nombre completo en
+    mayúsculas, conservando el sufijo (ascensor, montacarga, etc.).
+    Solo quita el prefijo "E." / "E ".
     """
-    nombre = (ubicacion or "").strip()
-    nombre = re.sub(r"^\s*Edif(?:icio)?\.?\s*", "", nombre, flags=re.IGNORECASE)
+    nombre = (activo or "").strip()
+    nombre = re.sub(r"^\s*E\.?\s*", "", nombre, flags=re.IGNORECASE)
     return nombre.strip().upper()
 
 
@@ -72,7 +72,7 @@ def build_output_filename(meta: dict) -> str:
     El número del edificio se incluye solo si está presente en ubicacion.
     El número de orden ya no se incluye.
     """
-    nombre_edif = extraer_nombre_edificio(meta.get("ubicacion", ""))
+    nombre_edif = extraer_nombre_edificio(meta.get("activo", ""))
     mes         = extraer_mes(meta)
 
     partes = ["INF - MANT.", mes, "EDIF."]
