@@ -582,7 +582,7 @@ UI = """<!DOCTYPE html>
       color: #fff;
       border: none;
       border-radius: 8px;
-      padding: 13px 20px;
+      padding: 12px 20px;
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
@@ -622,7 +622,7 @@ UI = """<!DOCTYPE html>
     }
     .approve-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
 
-    .drive-status { font-size: 12px; margin-top: 2px; }
+    .drive-status { font-size: 12px; margin-top: 0; }
     .drive-status.ok    { color: #166534; }
     .drive-status.error { color: #991b1b; }
 
@@ -635,8 +635,15 @@ UI = """<!DOCTYPE html>
       color: #64748b;
       cursor: pointer;
       transition: border-color .2s, color .2s;
+      margin-top: 0;
     }
     .btn-reset:hover { border-color: #94a3b8; color: #334155; }
+
+    .result-card.show {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
 
     /* Loading */
     .loading-overlay {
