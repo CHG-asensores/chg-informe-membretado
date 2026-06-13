@@ -10,6 +10,23 @@ NOISE_Y_BOTTOM = 790
 KNOWN_VALUES   = {"Bueno", "Malo", "No Aplica", "condición estable", "condición inestable", "Operativo", "Si Requiere", "Crítico", "-"}
 BOLD_FLAG      = 1 << 4
 
+# Color azul del círculo seleccionado en MaintainX
+BLUE_FILL = (0.0, 0.45879998803138733, 1.0)
+# Tolerancia en px para emparejar centro del círculo con centro del texto
+SEL_TOL   = 8
+
+
+def get_selected_ys(page) -> list:
+    """Devuelve lista de coordenadas Y (centro) de los círculos seleccionados
+    en la página, identificados por su relleno azul en los drawings."""
+    ys = []
+    for d in page.get_drawings():
+        if d.get("fill") == BLUE_FILL:
+            rect = d.get("rect")
+            if rect:
+                ys.append((rect.y0 + rect.y1) / 2)
+    return ys
+
 # Umbrales para las 3 columnas del header (x < LEFT → col izq, x < MID → col central, x >= MID → col der)
 COL_LEFT_MAX   = 180   # columna izquierda: x < 180
 COL_MID_MAX    = 340   # columna central:   180 ≤ x < 340
@@ -30,7 +47,8 @@ def extract_lines(page):
                 continue
             text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
             is_bold = any(s["flags"] & BOLD_FLAG for s in line["spans"] if s["text"].strip())
-            lines.append({"text": text, "y": y0, "x": line["bbox"][0], "bold": is_bold})
+            cy = (y0 + line["bbox"][3]) / 2   # centro vertical de la línea
+            lines.append({"text": text, "y": y0, "cy": cy, "x": line["bbox"][0], "bold": is_bold})
     lines.sort(key=lambda l: (round(l["y"]), l["x"]))
     return lines
 
@@ -166,6 +184,9 @@ def parse_pdf(pdf_bytes):
                 break
 
         firma_text_y = get_firma_y(page)
+
+        # Círculos seleccionados (azul relleno) en esta página
+        selected_ys = get_selected_ys(page)
 
         i = 0
         while i < len(lines):
@@ -323,11 +344,26 @@ def parse_pdf(pdf_bytes):
                     i += 1; continue
 
                 if pending_label and current_section is not None:
-                    current_section["campos"].append({"etiqueta": pending_label, "valor": text})
-                    campos_parseados += 1
-                    if text not in KNOWN_VALUES:
-                        valores_invalidos.append({"etiqueta": pending_label, "valor": text})
-                    pending_label = None
+                    # Verificar si esta línea es la opción seleccionada.
+                    # En Montacarga/Plataforma aparecen todas las opciones;
+                    # en Ascensor solo aparece la opción seleccionada.
+                    # Usamos el círculo azul (selected_ys) cuando está disponible.
+                    is_selected = any(abs(sy - entry["cy"]) < SEL_TOL for sy in selected_ys)
+                    if selected_ys:
+                        # Hay círculos en la página → solo guardar si este está seleccionado
+                        if is_selected:
+                            current_section["campos"].append({"etiqueta": pending_label, "valor": text})
+                            campos_parseados += 1
+                            if text not in KNOWN_VALUES:
+                                valores_invalidos.append({"etiqueta": pending_label, "valor": text})
+                            pending_label = None
+                    else:
+                        # Sin círculos detectados (fallback): tomar el primer valor como antes
+                        current_section["campos"].append({"etiqueta": pending_label, "valor": text})
+                        campos_parseados += 1
+                        if text not in KNOWN_VALUES:
+                            valores_invalidos.append({"etiqueta": pending_label, "valor": text})
+                        pending_label = None
 
             # ─── SEGUIMIENTO ─────────────────────────────────────────────────
             elif state == "SEGUIMIENTO":
