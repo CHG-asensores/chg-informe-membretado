@@ -440,16 +440,26 @@ UI = """<!DOCTYPE html>
       font-size: 13px;
       color: #475569;
       text-align: left;
+      align-items: stretch;
     }
     .result-meta-card .card-grid > div {
       background: #fff;
       border: 1px solid #eef2f7;
       border-radius: 12px;
       padding: 10px 12px;
-      min-height: 72px;
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
     }
-    .result-meta-card .item-label { color: #94a3b8; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .result-meta-card .item-label {
+      color: #94a3b8;
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      flex-shrink: 0;
+    }
     .result-meta-card .item-value {
       font-weight: 700;
       font-size: 14px;
