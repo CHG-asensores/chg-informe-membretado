@@ -348,37 +348,39 @@ UI = """<!DOCTYPE html>
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 10px;
-      padding: 18px 20px;
+      padding: 24px 26px;
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 4px;
+      gap: 6px;
     }
     .result-meta-card .card-title {
       font-weight: 700;
-      font-size: 14px;
+      font-size: 15px;
+      line-height: 1.4;
       color: #1e293b;
-      margin-bottom: 10px;
+      margin-bottom: 16px;
       text-align: center;
     }
     .result-meta-card .card-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px 18px;
+      gap: 16px 24px;
       font-size: 13px;
+      line-height: 1.5;
       color: #475569;
       text-align: left;
     }
-    .result-meta-card .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .result-meta-card .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
     .result-meta-card .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
     .result-meta-card .card-actions {
       display: flex;
-      gap: 10px;
-      margin-top: 14px;
+      gap: 12px;
+      margin-top: 20px;
     }
-    .result-meta-card .card-actions > * { flex: 1; margin-top: 0 !important; }
+    .result-meta-card .card-actions > * { flex: 1; margin-top: 0 !important; padding: 13px 16px; }
 
     .btn-preview-item {
       display: flex;
@@ -510,7 +512,7 @@ UI = """<!DOCTYPE html>
 
     .approve-row {
       display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #334155; margin-top: 8px;
+      font-size: 13px; color: #334155; margin-top: 16px; line-height: 1.5;
       user-select: none; cursor: pointer;
     }
     .approve-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
