@@ -41,19 +41,14 @@ MESES_ES = {
 }
 
 
-def extraer_nombre_edificio(activo: str) -> str:
-    """A partir del campo ACTIVO (p.ej. "E. Tradiciones Prime - Ascensor 1")
-    extrae solo el nombre del edificio (p.ej. "TRADICIONES PRIME").
-
-    Quita el prefijo "E." / "E " y el sufijo " - Ascensor N" / " - Monta Auto N"
-    (con o sin número), sin importar mayúsculas/minúsculas.
+def extraer_nombre_edificio(ubicacion: str) -> str:
+    """A partir del campo UBICACION (p.ej. "Edificio Alzadia 215" o
+    "Edificio Alzadia") extrae el nombre en mayúsculas conservando el
+    número si aparece (p.ej. "ALZADIA 215" o "ALZADIA").
+    Quita el prefijo "Edificio" / "Edif." y nada más.
     """
-    nombre = (activo or "").strip()
-    # Quitar prefijo tipo "E." o "E " al inicio
-    nombre = re.sub(r"^\s*E\.?\s*", "", nombre, flags=re.IGNORECASE)
-    # Quitar sufijo "- Ascensor N" / "- Monta Auto N" (y variantes con espacios)
-    nombre = re.sub(r"\s*-\s*Ascensor.*$", "", nombre, flags=re.IGNORECASE)
-    nombre = re.sub(r"\s*-\s*Monta\s*Auto.*$", "", nombre, flags=re.IGNORECASE)
+    nombre = (ubicacion or "").strip()
+    nombre = re.sub(r"^\s*Edif(?:icio)?\.?\s*", "", nombre, flags=re.IGNORECASE)
     return nombre.strip().upper()
 
 
@@ -73,17 +68,16 @@ def extraer_mes(meta: dict) -> str:
 
 def build_output_filename(meta: dict) -> str:
     """Construye el nombre de salida del PDF según el formato:
-    "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO} {N° INFORME}.pdf"
+    "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO} [{NÚMERO}].pdf"
+    El número del edificio se incluye solo si está presente en ubicacion.
+    El número de orden ya no se incluye.
     """
-    numero      = (meta.get("numero_orden", "") or "").strip()
-    nombre_edif = extraer_nombre_edificio(meta.get("activo", ""))
+    nombre_edif = extraer_nombre_edificio(meta.get("ubicacion", ""))
     mes         = extraer_mes(meta)
 
     partes = ["INF - MANT.", mes, "EDIF."]
     if nombre_edif:
         partes.append(nombre_edif)
-    if numero:
-        partes.append(numero)
 
     nombre_archivo = " ".join(p for p in partes if p)
     nombre_archivo = re.sub(r"\s+", " ", nombre_archivo).strip()
