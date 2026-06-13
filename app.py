@@ -185,6 +185,9 @@ UI = """<!DOCTYPE html>
       width: 100%;
       margin: 0 auto;
     }
+    main.result-active {
+      grid-template-columns: 1fr;
+    }
 
     .panel {
       background: #fff;
@@ -398,32 +401,45 @@ UI = """<!DOCTYPE html>
     .result-meta-card {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 14px;
-      padding: 18px 20px;
+      border-radius: 16px;
+      padding: 20px 22px;
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 4px;
+      gap: 14px;
       box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    }
+    .result-meta-card .card-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .result-meta-card .card-icon {
+      width: 46px;
+      height: 46px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: #e8efff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
     }
     .result-meta-card .card-title {
       font-weight: 800;
-      font-size: 16px;
+      font-size: 18px;
       line-height: 1.3;
       color: #0f172a;
       letter-spacing: -0.01em;
-      margin-bottom: 12px;
-      text-align: center;
-      overflow-wrap: break-word;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
     }
     .result-meta-card .card-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px 16px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
       font-size: 13px;
       color: #475569;
       text-align: left;
@@ -431,24 +447,29 @@ UI = """<!DOCTYPE html>
     .result-meta-card .card-grid > div {
       background: #fff;
       border: 1px solid #eef2f7;
-      border-radius: 10px;
-      padding: 8px 10px;
+      border-radius: 12px;
+      padding: 12px 14px;
     }
     .result-meta-card .item-label { color: #94a3b8; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-    .result-meta-card .item-value { font-weight: 600; font-size: 14px; color: #1e293b; margin-top: 3px; line-height: 1.3; }
+    .result-meta-card .item-value { font-weight: 700; font-size: 16px; color: #1e293b; margin-top: 5px; line-height: 1.3; }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
+    .result-meta-card .card-approve {
+      background: #fff;
+      border: 1px solid #eef2f7;
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
     .result-meta-card .card-actions {
       display: flex;
       gap: 10px;
-      margin-top: 14px;
     }
     .result-meta-card .card-actions > * {
       flex: 1;
       margin-top: 0 !important;
       height: 44px;
       padding: 0 12px;
-      font-size: 13px;
+      font-size: 14px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -649,7 +670,7 @@ UI = """<!DOCTYPE html>
   <div class="sub">Generador de Informes Membretados</div>
 </header>
 
-<main>
+<main id="mainGrid">
   <!-- ── Columna izquierda: subir PDF ── -->
   <div class="panel">
     <div class="panel-title">
@@ -723,6 +744,7 @@ UI = """<!DOCTYPE html>
 
 <script>
   const dropZone    = document.getElementById('dropZone');
+  const mainGrid    = document.getElementById('mainGrid');
   const fileInput   = document.getElementById('fileInput');
   const fileList    = document.getElementById('fileList');
   const btnGenerate = document.getElementById('btnGenerate');
@@ -802,6 +824,7 @@ UI = """<!DOCTYPE html>
     resultCard.classList.remove('show');
     loadingOverlay.classList.remove('show');
     resultEmpty.style.display = '';
+    mainGrid.classList.remove('result-active');
     if (driveStatus) { driveStatus.textContent = ''; driveStatus.className = 'drive-status'; }
   }
 
@@ -881,7 +904,7 @@ UI = """<!DOCTYPE html>
     if (!fileId) return '';
     const checked = approvedIds.has(fileId) ? 'checked' : '';
     return `
-      <label class="approve-row" style="grid-column: 1 / -1;">
+      <label class="approve-row card-approve" style="margin-top:0;">
         <input type="checkbox" id="approveCheckbox" data-file-id="${fileId}" ${checked}>
         Aprobado para subir a Drive
       </label>`;
@@ -931,6 +954,7 @@ UI = """<!DOCTYPE html>
   function showResult(data) {
     loadingOverlay.classList.remove('show');
     resultCard.classList.add('show');
+    mainGrid.classList.add('result-active');
     carouselSlides = [];
     carouselIndex = 0;
     approvedIds = new Set();
@@ -980,7 +1004,10 @@ UI = """<!DOCTYPE html>
         const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
         return `
           <div class="result-meta-card">
-            <div class="card-title">${titulo}</div>
+            <div class="card-header">
+              <div class="card-icon">🏢</div>
+              <div class="card-title" title="${titulo}">${titulo}</div>
+            </div>
             <div class="card-grid">${metaGridHtml(m)}</div>
             ${approveCheckboxHtml(item.file_id)}
             <div class="card-actions">${itemPreviewHtml(item, true)}</div>
@@ -997,9 +1024,18 @@ UI = """<!DOCTYPE html>
 
       renderCarousel();
     } else {
-      resultMeta.innerHTML = metaGridHtml(data.meta || {})
-        + approveCheckboxHtml(data.file_id)
-        + `<div class="card-actions">${itemPreviewHtml(data, false)}</div>`;
+      const m = data.meta || {};
+      const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || data.filename}` : data.filename;
+      resultMeta.innerHTML = `
+        <div class="result-meta-card">
+          <div class="card-header">
+            <div class="card-icon">🏢</div>
+            <div class="card-title" title="${titulo}">${titulo}</div>
+          </div>
+          <div class="card-grid">${metaGridHtml(m)}</div>
+          ${approveCheckboxHtml(data.file_id)}
+          <div class="card-actions">${itemPreviewHtml(data, false)}</div>
+        </div>`;
       const approveCb = document.getElementById('approveCheckbox');
       if (approveCb) {
         approveCb.addEventListener('change', () => {
