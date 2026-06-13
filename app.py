@@ -362,6 +362,7 @@ UI = """<!DOCTYPE html>
       color: #1e293b;
       margin-bottom: 12px;
       text-align: center;
+      overflow-wrap: break-word;
     }
     .result-meta-card .card-grid {
       display: grid;
@@ -381,7 +382,7 @@ UI = """<!DOCTYPE html>
       gap: 12px;
       margin-top: 20px;
     }
-    .result-meta-card .card-actions > * { flex: 1; margin-top: 0 !important; padding: 13px 16px; }
+    .result-meta-card .card-actions > * { flex: 1; margin-top: 0 !important; padding: 8px 12px; font-size: 12px; }
 
     .btn-preview-item {
       display: flex;
