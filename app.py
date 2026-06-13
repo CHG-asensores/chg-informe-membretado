@@ -323,6 +323,8 @@ UI = """<!DOCTYPE html>
     }
     .result-meta .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     .result-meta .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
+    .result-meta .card-actions { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 4px; }
+    .result-meta .card-actions > * { flex: 1; margin-top: 0 !important; }
 
     .carousel { display: flex; flex-direction: column; gap: 10px; }
     .carousel-track {
@@ -342,13 +344,41 @@ UI = """<!DOCTYPE html>
       font-variant-numeric: tabular-nums;
     }
 
-    .result-meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; }
-    .result-meta-card .card-title { font-weight: 600; font-size: 13px; color: #1e293b; margin-bottom: 8px; }
-    .result-meta-card .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px; color: #475569; }
+    .result-meta-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+    }
+    .result-meta-card .card-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #1e293b;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .result-meta-card .card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      font-size: 13px;
+      color: #475569;
+      text-align: left;
+    }
     .result-meta-card .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     .result-meta-card .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
+    .result-meta-card .card-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .result-meta-card .card-actions > * { flex: 1; margin-top: 0 !important; }
 
     .btn-preview-item {
       display: flex;
@@ -871,7 +901,7 @@ UI = """<!DOCTYPE html>
             <div class="card-title">${titulo}</div>
             <div class="card-grid">${metaGridHtml(m)}</div>
             ${approveCheckboxHtml(item.file_id)}
-            ${itemPreviewHtml(item, true)}
+            <div class="card-actions">${itemPreviewHtml(item, true)}</div>
           </div>`;
       });
 
@@ -887,7 +917,7 @@ UI = """<!DOCTYPE html>
     } else {
       resultMeta.innerHTML = metaGridHtml(data.meta || {})
         + approveCheckboxHtml(data.file_id)
-        + itemPreviewHtml(data, false);
+        + `<div class="card-actions">${itemPreviewHtml(data, false)}</div>`;
       const approveCb = document.getElementById('approveCheckbox');
       if (approveCb) {
         approveCb.addEventListener('change', () => {
