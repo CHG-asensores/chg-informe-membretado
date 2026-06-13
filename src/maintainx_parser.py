@@ -42,6 +42,36 @@ def get_image_positions(page):
     return sorted(positions, key=lambda p: p["y"])
 
 
+def get_firma_y(page):
+    """Devuelve la posición Y del texto 'Firma del cliente:' en la página,
+    o None si no aparece. Se usa para separar fotos de inspección de la
+    imagen de firma cuando ambas coexisten en la misma página."""
+    for block in page.get_text("dict")["blocks"]:
+        if block.get("type") != 0:
+            continue
+        for line in block["lines"]:
+            txt = "".join(s["text"] for s in line["spans"]).strip()
+            if txt == "Firma del cliente:":
+                return line["bbox"][1]
+    return None
+
+
+def get_foto_labels_y(page):
+    """Devuelve dict {xref_aproximado: y_del_label} con las posiciones Y de
+    cada etiqueta 'Fotografía ...' en la página. Se usa para asignar la
+    imagen correcta a cada slot de foto cuando varias fotos comparten página
+    con la firma."""
+    labels = []
+    for block in page.get_text("dict")["blocks"]:
+        if block.get("type") != 0:
+            continue
+        for line in block["lines"]:
+            txt = "".join(s["text"] for s in line["spans"]).strip()
+            if re.match(r"^Fotograf[íi]a\b", txt, re.I):
+                labels.append(line["bbox"][1])
+    return sorted(labels)
+
+
 def parse_pdf(pdf_bytes):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
@@ -56,9 +86,9 @@ def parse_pdf(pdf_bytes):
     }
     firma = {"data_base64": "", "texto": ""}
     seguimiento = {"titulo": "", "contenido": ""}
-    info_orden  = {"campos": []}    # INFORMACIÓN DE ORDEN DE TRABAJO
-    comentarios = []                # lista de {texto, autor_fecha}
-    historial   = []                # lista de {accion, fecha}
+    info_orden  = {"campos": []}
+    comentarios = []
+    historial   = []
 
     # Número de orden del encabezado azul
     for block in doc[0].get_text("dict")["blocks"]:
@@ -96,20 +126,12 @@ def parse_pdf(pdf_bytes):
     valores_invalidos = []
     current_comentario = None
 
-    # ── Estado a nivel de documento para asignación de fotos del repuesto ──
-    # Se activa al encontrar el título "Detalles del repuesto a reparar o
-    # cambiar" (en cualquier página) y permanece activo para páginas
-    # posteriores, ya que las fotos del repuesto pueden quedar en una página
-    # distinta a la del título (p.ej. justo antes de "Firma del cliente").
     seen_repuesto_marker = False
-    # Cantidad máxima de fotos de repuesto esperadas (se intenta leer de
-    # "Fotos del repuesto a reparar (máximo N):"; por defecto 3).
     repuesto_photos_max  = 3
 
     for page_num, page in enumerate(doc):
         lines = extract_lines(page)
 
-        # Detectar y_position de "Detalles del repuesto" en esta página
         repuesto_start_y = None
         for entry in lines:
             if entry["text"] == "Detalles del repuesto a reparar o cambiar" and entry["bold"]:
@@ -117,15 +139,8 @@ def parse_pdf(pdf_bytes):
                 seen_repuesto_marker = True
                 break
 
-        # Detectar y_position de "Firma del cliente:" / "Firmado por ..." en
-        # esta página, para poder distinguir las fotos del repuesto (que
-        # aparecen ANTES de la firma cuando comparten página) de la propia
-        # imagen de la firma.
-        firma_text_y = None
-        for entry in lines:
-            if entry["text"] == "Firma del cliente:" or re.match(r"^Firmado por .+", entry["text"]):
-                if firma_text_y is None or entry["y"] < firma_text_y:
-                    firma_text_y = entry["y"]
+        # Y exacta del texto "Firma del cliente:" en esta página
+        firma_text_y = get_firma_y(page)
 
         i = 0
         while i < len(lines):
@@ -137,13 +152,10 @@ def parse_pdf(pdf_bytes):
                 i += 1
                 continue
 
-            # Líneas de paginación tipo "Página X de Y" (algunos PDFs las incluyen)
             if re.match(r"^Página \d+ de \d+$", text, re.I):
                 i += 1
                 continue
 
-            # Etiquetas de prioridad sueltas (Alto/Medio/Bajo) antes del header,
-            # cuando aparecen como línea independiente fuera de la columna de PRIORIDAD
             if state == "HEADER" and text in ("Alto", "Medio", "Bajo") and "prioridad" not in meta \
                     and "estado" not in meta:
                 meta["prioridad"] = text
@@ -167,16 +179,6 @@ def parse_pdf(pdf_bytes):
                     pending_left = pending_right = None
                     continue
 
-                # "Seguimiento de tiempos y costos" puede aparecer ANTES de
-                # "PROCEDIMIENTO" (entre ACTIVO y PROCEDIMIENTO). Si ocurre,
-                # se captura aquí su título + contenido y se permanece en
-                # estado HEADER, consumiendo las líneas de contenido del
-                # seguimiento (no-bold, que no son etiquetas de header ni el
-                # patrón "N / N") hasta llegar a la siguiente etiqueta de
-                # header (p.ej. "PROCEDIMIENTO") o al título en negrita del
-                # procedimiento. Así se evita que el parser caiga al
-                # "Fallback" y pierda el manejo de "N / N" (Campos
-                # completados), que solo se detecta en estado HEADER.
                 if text == "Seguimiento de tiempos y costos":
                     seguimiento["titulo"] = text
                     pending_left = pending_right = None
@@ -233,16 +235,6 @@ def parse_pdf(pdf_bytes):
                         else:           pending_right = None
                     i += 1; continue
 
-                # ── Fallback: ninguna condición de HEADER coincidió.
-                # Si la línea parece el inicio de una sección real (negrita,
-                # o una etiqueta "Algo:"), se considera terminado el HEADER y
-                # se reprocesa esta misma línea ya en estado SECTIONS.
-                # Si NO lo parece (p.ej. continuación de un nombre de
-                # edificio/dirección en varias líneas, o líneas tipo
-                # "Principal: ..."), se acumula como parte de "direccion" y
-                # se permanece en HEADER, para no perder el manejo de
-                # "Seguimiento de tiempos y costos" / "N / N" que aún pueden
-                # venir después.
                 if is_bold or text.endswith(":"):
                     state = "SECTIONS"
                     pending_left = pending_right = None
@@ -256,8 +248,6 @@ def parse_pdf(pdf_bytes):
 
             # ─── SECTIONS ────────────────────────────────────────────────────
             elif state == "SECTIONS":
-                # Seguimiento de tiempos y costos (caso fuera del HEADER, por
-                # si en algún formato apareciera más adelante)
                 if text == "Seguimiento de tiempos y costos":
                     seguimiento["titulo"] = text
                     state = "SEGUIMIENTO"
@@ -292,9 +282,7 @@ def parse_pdf(pdf_bytes):
 
             # ─── SEGUIMIENTO ─────────────────────────────────────────────────
             elif state == "SEGUIMIENTO":
-                # Cualquier línea hasta encontrar sección bold siguiente
                 if is_bold and len(text) > 3 and not text.endswith(":"):
-                    # Fin del seguimiento, volver a SECTIONS
                     state = "SECTIONS"
                     current_section = {"nombre": text, "campos": []}
                     secciones.append(current_section)
@@ -308,7 +296,6 @@ def parse_pdf(pdf_bytes):
                     state = "OBSERVATIONS"
                     pending_label = None
                     i += 1; continue
-                # Acumular contenido del seguimiento
                 if seguimiento["contenido"]:
                     seguimiento["contenido"] += "\n" + text
                 else:
@@ -374,9 +361,6 @@ def parse_pdf(pdf_bytes):
                     if m2:
                         repuesto_photos_max = int(m2.group(1))
                     i += 1; continue
-                # Si en una nueva página aparecen directamente las etiquetas
-                # de Observaciones (sin el encabezado bold "Observaciones y
-                # Recomendaciones" repetido), volver a OBSERVATIONS y procesar
                 if text in (
                     "Observaciones y Recomendaciones para cliente:",
                     "Observaciones para CHG Ascensores:",
@@ -385,7 +369,7 @@ def parse_pdf(pdf_bytes):
                 ) or re.match(r"^Firmado por .+", text) or text == "INFORMACIÓN DE ORDEN DE TRABAJO":
                     state = "OBSERVATIONS"
                     pending_label = None
-                    continue  # reprocesar esta línea en estado OBSERVATIONS
+                    continue
                 if pending_label == "info_tecnica":
                     dr = obs["detalles_repuesto"]
                     dr["info_tecnica"] = (dr["info_tecnica"] + "\n" + text).strip("\n")
@@ -398,7 +382,6 @@ def parse_pdf(pdf_bytes):
                 if text == "HISTORIAL DE ORDEN DE TRABAJO":
                     state = "HISTORIAL"
                     i += 1; continue
-                # Acumular campos de info de orden
                 info_orden["campos"].append(text)
 
             # ─── COMENTARIOS ─────────────────────────────────────────────────
@@ -406,7 +389,6 @@ def parse_pdf(pdf_bytes):
                 if text == "HISTORIAL DE ORDEN DE TRABAJO":
                     state = "HISTORIAL"
                     i += 1; continue
-                # "Comentado por X el fecha" → metadato del comentario anterior
                 if re.match(r"^Comentado por .+", text):
                     if current_comentario is not None:
                         current_comentario["autor_fecha"] = text
@@ -423,7 +405,6 @@ def parse_pdf(pdf_bytes):
                 if text in ("Firmado por", "Fecha"):
                     state = "DONE_HIST"
                     i += 1; continue
-                # Líneas alternas: acción / fecha
                 if re.match(r"^\d{2}/\d{2}/\d{4}", text):
                     if historial:
                         historial[-1]["fecha"] = text
@@ -435,15 +416,12 @@ def parse_pdf(pdf_bytes):
 
             i += 1
 
-        # Guardar comentario pendiente
         if current_comentario is not None:
             comentarios.append(current_comentario)
             current_comentario = None
 
         # ── Asignación de imágenes por posición Y ────────────────────────────
         img_positions = get_image_positions(page)
-        page_text_raw = page.get_text()
-        has_firma = "Firma del cliente" in page_text_raw or "Firmado por" in page_text_raw
 
         for img_pos in img_positions:
             xref = img_pos.get("xref")
@@ -457,35 +435,36 @@ def parse_pdf(pdf_bytes):
 
                 repuesto_fotos = obs["detalles_repuesto"]["fotos"]
 
+                # ── Caso 1: imagen de repuesto (mismo criterio que antes) ──
                 if repuesto_start_y is not None and img_y > repuesto_start_y:
-                    # Caso clásico: el título "Detalles del repuesto..." y sus
-                    # fotos están en la misma página, las fotos quedan debajo
-                    # del título.
                     repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
-                elif (
+                    continue
+
+                if (
                     repuesto_start_y is None
                     and seen_repuesto_marker
                     and len(repuesto_fotos) < repuesto_photos_max
                     and (firma_text_y is None or img_y < firma_text_y)
                 ):
-                    # Caso de continuación: el título "Detalles del repuesto..."
-                    # quedó en una página anterior (no en esta) y las fotos del
-                    # repuesto aparecen en esta página, antes de "Firma del
-                    # cliente" / "Firmado por" (si existe en esta página).
-                    # La condición "repuesto_start_y is None" evita que, en la
-                    # página donde SÍ está el título, las fotos de inspección
-                    # que aparecen ANTES del título (y por tanto no cumplen la
-                    # condición 1) se confundan con fotos del repuesto.
                     repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
-                elif has_firma and not firma["data_base64"]:
+                    continue
+
+                # ── Caso 2: imagen de firma ──
+                # Solo es firma si está POR DEBAJO del texto "Firma del cliente:"
+                # Esto evita que fotos de inspección (que aparecen antes en la
+                # página) sean confundidas con la firma.
+                if firma_text_y is not None and img_y >= firma_text_y and not firma["data_base64"]:
                     firma["data_base64"] = img_b64
                     firma["ext"]         = img_ext
-                else:
-                    for foto in fotos:
-                        if not foto["data_base64"]:
-                            foto["data_base64"] = img_b64
-                            foto["ext"]         = img_ext
-                            break
+                    continue
+
+                # ── Caso 3: fotos de inspección ──
+                for foto in fotos:
+                    if not foto["data_base64"]:
+                        foto["data_base64"] = img_b64
+                        foto["ext"]         = img_ext
+                        break
+
             except Exception:
                 pass
 
