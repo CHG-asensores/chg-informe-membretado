@@ -105,16 +105,6 @@
     display: inline-block; min-width: 75mm; min-height: 30mm; margin-top: 2mm;
   }
   .firma-img { max-width: 65mm; max-height: 25mm; display: block; }
-
-  /* ═══ Comentarios ═══ */
-  .comentarios-section { margin-top: 6mm; page-break-inside: avoid; }
-  .comentarios-titulo {
-    font-size: 9pt; font-weight: bold; color: #1a1a1a; text-transform: uppercase;
-    letter-spacing: 0.05em; border-bottom: 1px solid #9ca3af; padding-bottom: 1mm; margin-bottom: 3mm;
-  }
-  .comentario-bloque { margin-bottom: 4mm; }
-  .comentario-texto { font-size: 9pt; color: #1a1a1a; line-height: 1.5; margin-bottom: 1mm; }
-  .comentario-autor { font-size: 8pt; color: #4b5563; font-style: italic; }
 </style>
 </head>
 <body>
@@ -316,20 +306,6 @@
     <div class="obs-valor">{{ data.meta.fecha_hora_salida }}</div>
   </div>
   {% endif %}
-
-  <!-- Comentarios -->
-  {% if data.comentarios %}
-  <div class="comentarios-section">
-    <div class="comentarios-titulo">Comentarios</div>
-    {% for c in data.comentarios %}
-    <div class="comentario-bloque">
-      <div class="comentario-texto">{{ c.texto }}</div>
-      {% if c.autor_fecha %}<div class="comentario-autor">{{ c.autor_fecha }}</div>{% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
 
 </div>
 
