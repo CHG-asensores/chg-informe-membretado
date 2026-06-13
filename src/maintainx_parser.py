@@ -167,6 +167,37 @@ def parse_pdf(pdf_bytes):
                     pending_left = pending_right = None
                     continue
 
+                # "Seguimiento de tiempos y costos" puede aparecer ANTES de
+                # "PROCEDIMIENTO" (entre ACTIVO y PROCEDIMIENTO). Si ocurre,
+                # se captura aquí su título + contenido y se permanece en
+                # estado HEADER, consumiendo las líneas de contenido del
+                # seguimiento (no-bold, que no son etiquetas de header ni el
+                # patrón "N / N") hasta llegar a la siguiente etiqueta de
+                # header (p.ej. "PROCEDIMIENTO") o al título en negrita del
+                # procedimiento. Así se evita que el parser caiga al
+                # "Fallback" y pierda el manejo de "N / N" (Campos
+                # completados), que solo se detecta en estado HEADER.
+                if text == "Seguimiento de tiempos y costos":
+                    seguimiento["titulo"] = text
+                    pending_left = pending_right = None
+                    i += 1
+                    while i < len(lines):
+                        nxt = lines[i]
+                        if nxt["bold"]:
+                            break
+                        if nxt["text"] in HEADER_LABELS:
+                            break
+                        if re.match(r"^(\d+)\s*/\s*(\d+)$", nxt["text"]):
+                            break
+                        if nxt["text"] == "Fecha y Hora de ingreso:":
+                            break
+                        if seguimiento["contenido"]:
+                            seguimiento["contenido"] += "\n" + nxt["text"]
+                        else:
+                            seguimiento["contenido"] = nxt["text"]
+                        i += 1
+                    continue
+
                 col_is_left = entry["x"] < COL_THRESHOLD
                 pending = pending_left if col_is_left else pending_right
 
@@ -203,18 +234,30 @@ def parse_pdf(pdf_bytes):
                     i += 1; continue
 
                 # ── Fallback: ninguna condición de HEADER coincidió.
-                # Esto ocurre cuando, tras el título del procedimiento, viene
-                # directamente la primera sección del checklist (p.ej.
-                # "Limpieza general") sin pasar por "Fecha y Hora de ingreso:".
-                # Se considera terminado el HEADER y se reprocesa esta misma
-                # línea ya en estado SECTIONS.
-                state = "SECTIONS"
-                pending_left = pending_right = None
-                continue
+                # Si la línea parece el inicio de una sección real (negrita,
+                # o una etiqueta "Algo:"), se considera terminado el HEADER y
+                # se reprocesa esta misma línea ya en estado SECTIONS.
+                # Si NO lo parece (p.ej. continuación de un nombre de
+                # edificio/dirección en varias líneas, o líneas tipo
+                # "Principal: ..."), se acumula como parte de "direccion" y
+                # se permanece en HEADER, para no perder el manejo de
+                # "Seguimiento de tiempos y costos" / "N / N" que aún pueden
+                # venir después.
+                if is_bold or text.endswith(":"):
+                    state = "SECTIONS"
+                    pending_left = pending_right = None
+                    continue
+
+                if "direccion" in meta:
+                    meta["direccion"] += " " + text
+                else:
+                    meta["direccion"] = text
+                i += 1; continue
 
             # ─── SECTIONS ────────────────────────────────────────────────────
             elif state == "SECTIONS":
-                # Seguimiento de tiempos y costos
+                # Seguimiento de tiempos y costos (caso fuera del HEADER, por
+                # si en algún formato apareciera más adelante)
                 if text == "Seguimiento de tiempos y costos":
                     seguimiento["titulo"] = text
                     state = "SEGUIMIENTO"
