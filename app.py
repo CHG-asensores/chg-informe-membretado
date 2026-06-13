@@ -177,22 +177,19 @@ UI = """<!DOCTYPE html>
     main {
       flex: 1;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 40% 60%;
       align-items: start;
       gap: 24px;
       padding: 32px;
-      max-width: 1100px;
+      max-width: 1280px;
       width: 100%;
       margin: 0 auto;
-    }
-    main.result-active {
-      grid-template-columns: 1fr;
     }
 
     .panel {
       background: #fff;
       border-radius: 12px;
-      padding: 28px 18px;
+      padding: 24px 16px;
       box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
       display: flex;
       flex-direction: column;
@@ -376,7 +373,7 @@ UI = """<!DOCTYPE html>
     .carousel-arrow:disabled { opacity: .3; cursor: not-allowed; }
     .carousel-arrow.prev { left: -6px; }
     .carousel-arrow.next { right: -6px; }
-    .carousel-slide { width: 100%; box-sizing: border-box; padding: 0 30px; }
+    .carousel-slide { width: 100%; box-sizing: border-box; padding: 0 22px; }
     .carousel-dots {
       display: flex;
       align-items: center;
@@ -402,32 +399,32 @@ UI = """<!DOCTYPE html>
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 16px;
-      padding: 20px 22px;
+      padding: 18px 16px;
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 14px;
+      gap: 12px;
       box-shadow: 0 1px 2px rgba(15,23,42,.04);
     }
     .result-meta-card .card-header {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
     }
     .result-meta-card .card-icon {
-      width: 46px;
-      height: 46px;
+      width: 40px;
+      height: 40px;
       flex-shrink: 0;
       border-radius: 50%;
       background: #e8efff;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
+      font-size: 19px;
     }
     .result-meta-card .card-title {
       font-weight: 800;
-      font-size: 18px;
+      font-size: 16px;
       line-height: 1.3;
       color: #0f172a;
       letter-spacing: -0.01em;
@@ -438,8 +435,8 @@ UI = """<!DOCTYPE html>
     }
     .result-meta-card .card-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
       font-size: 13px;
       color: #475569;
       text-align: left;
@@ -448,7 +445,7 @@ UI = """<!DOCTYPE html>
       background: #fff;
       border: 1px solid #eef2f7;
       border-radius: 12px;
-      padding: 12px 14px;
+      padding: 10px 12px;
     }
     .result-meta-card .item-label { color: #94a3b8; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
     .result-meta-card .item-value { font-weight: 700; font-size: 16px; color: #1e293b; margin-top: 5px; line-height: 1.3; }
@@ -824,7 +821,6 @@ UI = """<!DOCTYPE html>
     resultCard.classList.remove('show');
     loadingOverlay.classList.remove('show');
     resultEmpty.style.display = '';
-    mainGrid.classList.remove('result-active');
     if (driveStatus) { driveStatus.textContent = ''; driveStatus.className = 'drive-status'; }
   }
 
@@ -954,7 +950,6 @@ UI = """<!DOCTYPE html>
   function showResult(data) {
     loadingOverlay.classList.remove('show');
     resultCard.classList.add('show');
-    mainGrid.classList.add('result-active');
     carouselSlides = [];
     carouselIndex = 0;
     approvedIds = new Set();
