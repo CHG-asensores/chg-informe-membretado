@@ -31,8 +31,11 @@ MEMBRETE_PATH = BASE_DIR / "template" / "assets" / "membrete.png"
 
 
 # ─── Nombre de archivo de salida ──────────────────────────────────────────
-# Formato requerido: "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO} {N° INFORME}"
-# Ejemplo:           "INF - MANT. JUNIO EDIF. DEL PARQUE 340"
+# Formato: "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO}.pdf"
+# Ejemplos:
+#   "INF - MANT. ABRIL EDIF. SANTA MARIA - MONTACARGA 1.pdf"
+#   "INF - MANT. ABRIL EDIF. CLINICA GONZALES S.A..pdf"
+#   "INF - MANT. ABRIL EDIF. MELCHOR MALO - PLATAFORMA.pdf"
 
 MESES_ES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
@@ -40,21 +43,38 @@ MESES_ES = {
     9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE",
 }
 
+# Patrón de activos que son solo tipo de equipo sin nombre de edificio,
+# p.ej. "Plataforma 1", "Ascensor 2", "Montacarga 1"
+_SOLO_EQUIPO_RE = re.compile(
+    r"^(Plataforma|Montacarga|Ascensor|Monta\s*carga|Monta\s*plato)\s*\d*\s*$",
+    re.IGNORECASE,
+)
 
-def extraer_nombre_edificio(activo: str) -> str:
-    """A partir del campo ACTIVO (p.ej. "E. Alzadia - Ascensor 1" o
-    "E. Santa Maria - Montacarga 1") extrae el nombre completo en
-    mayúsculas, conservando el sufijo (ascensor, montacarga, etc.).
-    Solo quita el prefijo "E." / "E ".
+
+def extraer_nombre_edificio(activo: str, ubicacion: str = "") -> str:
+    """Extrae el nombre del edificio/equipo en mayúsculas para el nombre de archivo.
+
+    Lógica:
+    1. Quita el prefijo "E." / "E " del campo ACTIVO.
+    2. Si lo que queda es solo un tipo de equipo genérico (ej. "Plataforma 1"),
+       usa el campo UBICACIÓN en su lugar, quitando el prefijo "Edificio ".
+    3. Retorna en mayúsculas.
     """
     nombre = (activo or "").strip()
-    nombre = re.sub(r"^\s*E\.?\s*", "", nombre, flags=re.IGNORECASE)
-    return nombre.strip().upper()
+    # Quitar prefijo "E." o "E "
+    nombre = re.sub(r"^\s*E\.?\s*", "", nombre, flags=re.IGNORECASE).strip()
+
+    # Si solo queda el tipo de equipo (sin nombre de edificio), usar ubicacion
+    if _SOLO_EQUIPO_RE.match(nombre):
+        nombre = re.sub(r"^\s*Edificio\s+", "", (ubicacion or ""), flags=re.IGNORECASE).strip()
+        if not nombre:
+            nombre = (activo or "").strip()  # fallback: usar activo completo
+
+    return nombre.upper()
 
 
 def extraer_mes(meta: dict) -> str:
-    """Determina el mes (en español, mayúsculas) a partir de la fecha de
-    ingreso del informe. Si no se puede determinar, usa el mes actual."""
+    """Determina el mes (en español, mayúsculas) a partir de la fecha de ingreso."""
     fecha_ingreso = meta.get("fecha_hora_ingreso", "") or ""
     m = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{4})", fecha_ingreso)
     if m:
@@ -67,13 +87,14 @@ def extraer_mes(meta: dict) -> str:
 
 
 def build_output_filename(meta: dict) -> str:
-    """Construye el nombre de salida del PDF según el formato:
-    "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO} [{NÚMERO}].pdf"
-    El número del edificio se incluye solo si está presente en ubicacion.
-    El número de orden ya no se incluye.
+    """Construye el nombre de salida del PDF:
+    "INF - MANT. {MES} EDIF. {NOMBRE}.pdf"
     """
-    nombre_edif = extraer_nombre_edificio(meta.get("activo", ""))
-    mes         = extraer_mes(meta)
+    nombre_edif = extraer_nombre_edificio(
+        meta.get("activo", ""),
+        meta.get("ubicacion", ""),
+    )
+    mes = extraer_mes(meta)
 
     partes = ["INF - MANT.", mes, "EDIF."]
     if nombre_edif:
@@ -107,18 +128,12 @@ def html_to_pdf(html_bytes: bytes) -> bytes:
 
 
 def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
-    """Sobrepone el membrete como fondo en cada página del PDF.
-
-    insert_image con overlay=False lo coloca DETRÁS del contenido existente,
-    así el texto y elementos del informe quedan por encima del membrete.
-    Garantiza que el membrete se repita idéntico en TODAS las páginas.
-    """
+    """Sobrepone el membrete como fondo en cada página del PDF."""
     src = fitz.open(stream=pdf_bytes, filetype="pdf")
     with open(membrete_path, "rb") as f:
         membrete_bytes = f.read()
     for page in src:
         page.insert_image(page.rect, stream=membrete_bytes, overlay=False)
-        # Texto "Generado para CHG Ascensores" en bottom-left de cada página
         page.insert_text(
             (40, page.rect.height - 18),
             "Generado para CHG Ascensores",
@@ -863,10 +878,10 @@ UI = """<!DOCTYPE html>
         </div>`).join('');
   }
 
-  // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
-  let carouselSlides = [];   // array de strings HTML, una por archivo
+  // ── Carrusel de resúmenes ──────────────────────────────────────────────
+  let carouselSlides = [];
   let carouselIndex  = 0;
-  let approvedIds    = new Set();   // file_id de tarjetas marcadas "Aprobado"
+  let approvedIds    = new Set();
 
   function renderCarousel() {
     const total = carouselSlides.length;
@@ -1132,8 +1147,6 @@ UI = """<!DOCTYPE html>
 </html>"""
 
 @app.route("/")
-
-
 def index():
     return render_template_string(UI)
 
@@ -1178,7 +1191,7 @@ def generate():
 
     import hashlib, time, zipfile
 
-    # ─── Un solo archivo: comportamiento original (PDF directo) ───────────
+    # ─── Un solo archivo ───────────────────────────────────────────────────
     if len(files) == 1:
         original_name = files[0].filename or "archivo.pdf"
         pdf_bytes = files[0].read()
@@ -1202,10 +1215,10 @@ def generate():
             "download_url": f"/download/{file_id}",
         })
 
-    # ─── Múltiples archivos: procesar en cola y empaquetar en .zip ─────────
-    results = []   # [(filename, pdf_bytes)]
-    items   = []   # [{"filename": ..., "meta": {...}}]
-    errors  = []   # [{"archivo": nombre_original, "error": mensaje}]
+    # ─── Múltiples archivos: empaquetar en .zip ────────────────────────────
+    results = []
+    items   = []
+    errors  = []
 
     for f in files:
         original_name = f.filename or "archivo.pdf"
@@ -1215,7 +1228,6 @@ def generate():
             continue
         try:
             filename, pdf_out, meta = process_one_pdf(pdf_bytes)
-            # Evitar nombres duplicados dentro del zip
             base, ext = os.path.splitext(filename)
             candidate = filename
             n = 1
@@ -1237,7 +1249,6 @@ def generate():
             "errors": errors,
         }), 500
 
-    # Crear .zip en memoria
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fname, pdf_bytes_ in results:
@@ -1266,7 +1277,6 @@ def download(file_id):
     filename, file_bytes, _ = _pdf_store[file_id]
     mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
 
-    # Si se pide como vista previa (inline), no forzar descarga
     inline = request.args.get("inline", "").strip() in ("1", "true", "yes")
 
     resp = send_file(
@@ -1281,12 +1291,7 @@ def download(file_id):
 
 @app.route("/upload-to-drive", methods=["POST"])
 def upload_to_drive():
-    """Reenvía los PDFs aprobados (por file_id) a un webhook de n8n,
-    que se encarga de subirlos a Google Drive.
-
-    Configurar la variable de entorno N8N_WEBHOOK_URL con la URL del
-    webhook de n8n (nodo Webhook -> Google Drive Upload).
-    """
+    """Reenvía los PDFs aprobados a un webhook de n8n para subir a Google Drive."""
     webhook_url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
     if not webhook_url:
         return jsonify({
