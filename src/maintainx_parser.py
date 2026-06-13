@@ -230,6 +230,14 @@ def parse_pdf(pdf_bytes):
                 i += 1
                 continue
 
+            # Ignorar sección "Descripción" y su texto explicativo del formulario
+            if text == "Descripción":
+                i += 1
+                continue
+            if re.match(r"^Este formulario debe ser llenado", text, re.I):
+                i += 1
+                continue
+
             # ─── HEADER ──────────────────────────────────────────────────────
             if state == "HEADER":
                 m_campos = re.match(r"^(\d+)\s*/\s*(\d+)$", text)
