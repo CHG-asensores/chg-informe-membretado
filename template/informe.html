@@ -42,7 +42,7 @@
   /* ═══ Procedimiento ═══ */
   .procedimiento-bloque { margin: 4mm 0 3mm 0; }
   .procedimiento-label { font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1mm; }
-  .titulo-principal { font-size: 14pt; font-weight: bold; color: #1d4ed8; text-decoration: underline; margin-bottom: 2mm; }
+  .titulo-principal { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin-bottom: 2mm; }
   .campos-completados {
     display: block; background: #fff; border: 1px solid #d1d5db;
     border-radius: 4px; padding: 5mm; text-align: center; margin: 3mm 0 4mm 0;
@@ -61,6 +61,7 @@
   .radio-blue {
     display: inline-block; width: 11px; height: 11px; border-radius: 50%;
     background: #2563eb; border: 2px solid white; box-shadow: 0 0 0 1.5px #2563eb; flex-shrink: 0;
+    margin: 1.5px;
   }
 
   /* ═══ Fotografías de inspección: 3 por página ═══ */
@@ -195,7 +196,7 @@
   {% if data.meta.get('procedimiento') %}
   <div class="procedimiento-label">≡ PROCEDIMIENTO</div>
   {% endif %}
-  <div class="titulo-principal">{{ data.meta.get('procedimiento', 'INFORME DE MANTENIMIENTO PREVENTIVO')|upper }}</div>
+  <div class="titulo-principal">{{ data.meta.get('procedimiento', 'Informe de Mantenimiento Preventivo') }}</div>
   {% if data.meta.get('campos_completados') %}
   <div class="campos-completados">
     <span class="campos-numero">{{ data.meta.campos_completados }}</span>
