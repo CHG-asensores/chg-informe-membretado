@@ -131,7 +131,7 @@ def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
             fontsize=7,
             color=(0.42, 0.45, 0.50),
         )
-    out = src.tobytes()
+    out = src.tobytes(garbage=4, deflate=True, deflate_images=True, clean=True)
     src.close()
     return out
 
