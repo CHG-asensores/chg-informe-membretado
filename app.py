@@ -10,11 +10,12 @@ Uso:
 import base64
 import io
 import os
+import re
 import sys
 from pathlib import Path
 
 import fitz  # PyMuPDF para overlay del membrete
-from flask import Flask, jsonify, render_template_string, request, send_file
+from flask import Flask, jsonify, render_template_string, request, send_file, session, redirect, url_for
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -23,10 +24,89 @@ from render_html import render_html
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024  # 150 MB (varios PDFs)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chg-ascensores-secret-2024")
+
+# Contraseña de acceso — cambiar solo aquí si se quiere rotar
+APP_PASSWORD = "BVm8i5nM9YEbtB11M"
 
 BASE_DIR      = Path(__file__).parent
 TEMPLATE_PATH = BASE_DIR / "template" / "informe.html"
 MEMBRETE_PATH = BASE_DIR / "template" / "assets" / "membrete.png"
+
+
+# ─── Nombre de archivo de salida ──────────────────────────────────────────
+# Formato: "INF - MANT. {MES} EDIF. {NOMBRE DEL EDIFICIO}.pdf"
+# Ejemplos:
+#   "INF - MANT. ABRIL EDIF. SANTA MARIA - MONTACARGA 1.pdf"
+#   "INF - MANT. ABRIL EDIF. CLINICA GONZALES S.A..pdf"
+#   "INF - MANT. ABRIL EDIF. MELCHOR MALO - PLATAFORMA.pdf"
+
+MESES_ES = {
+    1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
+    5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
+    9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE",
+}
+
+# Patrón de activos que son solo tipo de equipo sin nombre de edificio,
+# p.ej. "Plataforma 1", "Ascensor 2", "Montacarga 1"
+_SOLO_EQUIPO_RE = re.compile(
+    r"^(Plataforma|Montacarga|Ascensor|Monta\s*carga|Monta\s*plato)\s*\d*\s*$",
+    re.IGNORECASE,
+)
+
+
+def extraer_nombre_edificio(activo: str, ubicacion: str = "") -> str:
+    """Extrae el nombre del edificio/equipo en mayúsculas para el nombre de archivo.
+
+    Lógica:
+    1. Quita el prefijo "E." / "E " del campo ACTIVO.
+    2. Si lo que queda es solo un tipo de equipo genérico (ej. "Plataforma 1"),
+       usa el campo UBICACIÓN en su lugar, quitando el prefijo "Edificio ".
+    3. Retorna en mayúsculas.
+    """
+    nombre = (activo or "").strip()
+    # Quitar prefijo "E." o "E "
+    nombre = re.sub(r"^\s*E\.?\s*", "", nombre, flags=re.IGNORECASE).strip()
+
+    # Si solo queda el tipo de equipo (sin nombre de edificio), usar ubicacion
+    if _SOLO_EQUIPO_RE.match(nombre):
+        nombre = re.sub(r"^\s*Edificio\s+", "", (ubicacion or ""), flags=re.IGNORECASE).strip()
+        if not nombre:
+            nombre = (activo or "").strip()  # fallback: usar activo completo
+
+    return nombre.upper()
+
+
+def extraer_mes(meta: dict) -> str:
+    """Determina el mes (en español, mayúsculas) a partir de la fecha de ingreso."""
+    fecha_ingreso = meta.get("fecha_hora_ingreso", "") or ""
+    m = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{4})", fecha_ingreso)
+    if m:
+        mes_num = int(m.group(2))
+        if mes_num in MESES_ES:
+            return MESES_ES[mes_num]
+
+    import datetime
+    return MESES_ES.get(datetime.date.today().month, "")
+
+
+def build_output_filename(meta: dict) -> str:
+    """Construye el nombre de salida del PDF:
+    "INF - MANT. {MES} EDIF. {NOMBRE}.pdf"
+    """
+    nombre_edif = extraer_nombre_edificio(
+        meta.get("activo", ""),
+        meta.get("ubicacion", ""),
+    )
+    mes = extraer_mes(meta)
+
+    partes = ["INF - MANT.", mes, "EDIF."]
+    if nombre_edif:
+        partes.append(nombre_edif)
+
+    nombre_archivo = " ".join(p for p in partes if p)
+    nombre_archivo = re.sub(r"\s+", " ", nombre_archivo).strip()
+    return f"{nombre_archivo}.pdf"
 
 
 def html_to_pdf(html_bytes: bytes) -> bytes:
@@ -52,25 +132,19 @@ def html_to_pdf(html_bytes: bytes) -> bytes:
 
 
 def apply_letterhead(pdf_bytes: bytes, membrete_path: str) -> bytes:
-    """Sobrepone el membrete como fondo en cada página del PDF.
-
-    insert_image con overlay=False lo coloca DETRÁS del contenido existente,
-    así el texto y elementos del informe quedan por encima del membrete.
-    Garantiza que el membrete se repita idéntico en TODAS las páginas.
-    """
+    """Sobrepone el membrete como fondo en cada página del PDF."""
     src = fitz.open(stream=pdf_bytes, filetype="pdf")
     with open(membrete_path, "rb") as f:
         membrete_bytes = f.read()
     for page in src:
         page.insert_image(page.rect, stream=membrete_bytes, overlay=False)
-        # Texto "Generado para CHG Ascensores" en bottom-left de cada página
         page.insert_text(
             (40, page.rect.height - 18),
             "Generado para CHG Ascensores",
             fontsize=7,
             color=(0.42, 0.45, 0.50),
         )
-    out = src.tobytes()
+    out = src.tobytes(garbage=4, deflate=True, deflate_images=True, clean=True)
     src.close()
     return out
 
@@ -112,14 +186,28 @@ UI = """<!DOCTYPE html>
       color: #94a3b8;
       margin-left: auto;
     }
+    header .btn-logout {
+      background: none;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-left: 12px;
+      transition: border-color .2s, color .2s;
+      text-decoration: none;
+    }
+    header .btn-logout:hover { border-color: #94a3b8; color: #fff; }
 
     main {
       flex: 1;
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      padding: 32px;
-      max-width: 1100px;
+      grid-template-columns: 40% 60%;
+      align-items: start;
+      gap: 20px;
+      padding: 24px;
+      max-width: 1080px;
       width: 100%;
       margin: 0 auto;
     }
@@ -127,7 +215,7 @@ UI = """<!DOCTYPE html>
     .panel {
       background: #fff;
       border-radius: 12px;
-      padding: 28px;
+      padding: 24px 16px;
       box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
       display: flex;
       flex-direction: column;
@@ -187,6 +275,7 @@ UI = """<!DOCTYPE html>
       align-items: center;
       gap: 10px;
     }
+    .file-item .ficon { font-size: 18px; flex-shrink: 0; line-height: 1; }
     .file-item .fname { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .file-item .fsize { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
     .file-item .remove-btn {
@@ -261,39 +350,265 @@ UI = """<!DOCTYPE html>
     }
     .result-meta .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
     .result-meta .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
+    .result-meta .card-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .result-meta .card-actions > * {
+      flex: 1;
+      margin-top: 0 !important;
+      height: 38px;
+      padding: 0 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-radius: 10px;
+      box-sizing: border-box;
+    }
 
-    .carousel { display: flex; flex-direction: column; gap: 10px; }
+    .result-meta { padding: 0; border: none; background: none; display: block; }
+
+    .carousel { display: flex; flex-direction: column; gap: 12px; }
     .carousel-track {
-      display: flex; align-items: stretch; gap: 10px;
+      position: relative;
+      width: 100%;
     }
     .carousel-arrow {
-      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
-      width: 36px; flex-shrink: 0; cursor: pointer; font-size: 16px;
-      color: #475569; display: flex; align-items: center; justify-content: center;
-      transition: background .2s, color .2s, opacity .2s;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+      cursor: pointer;
+      font-size: 16px;
+      color: #475569;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(15,23,42,.10);
+      z-index: 5;
+      transition: background .15s, color .15s, opacity .15s;
     }
-    .carousel-arrow:hover:not(:disabled) { background: #f1f5f9; color: #1e293b; }
-    .carousel-arrow:disabled { opacity: .35; cursor: not-allowed; }
-    .carousel-slide { flex: 1; min-width: 0; }
+    .carousel-arrow:hover:not(:disabled) { background: #1a1a2e; color: #fff; }
+    .carousel-arrow:disabled { opacity: .3; cursor: not-allowed; }
+    .carousel-arrow.prev { left: 0; }
+    .carousel-arrow.next { right: 0; }
+    .carousel-slide {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0 40px;
+    }
+    .carousel-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .carousel-dots .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      transition: background .15s, transform .15s;
+    }
+    .carousel-dots .dot.active {
+      background: #1a1a2e;
+      transform: scale(1.25);
+    }
     .carousel-pagination {
       text-align: center; font-size: 12px; color: #94a3b8;
       font-variant-numeric: tabular-nums;
     }
 
-    .result-meta-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; }
-    .result-meta-card .card-title { font-weight: 600; font-size: 13px; color: #1e293b; margin-bottom: 8px; }
-    .result-meta-card .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px; color: #475569; }
-    .result-meta-card .item-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-    .result-meta-card .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
+    .result-meta-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 1px 2px rgba(15,23,42,.04);
+      width: 100%;
+      height: 350px;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .result-meta-card .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      height: 40px;
+    }
+    .result-meta-card .card-icon {
+      width: 36px; height: 36px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: #e8efff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+    }
+    .result-meta-card .card-title {
+      font-weight: 800;
+      font-size: 15px;
+      line-height: 1.2;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .result-meta-card .card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 8px;
+      flex: 1;
+      overflow: hidden;
+    }
+    .result-meta-card .card-grid > div {
+      background: #fff;
+      border: 1px solid #eef2f7;
+      border-radius: 10px;
+      padding: 7px 10px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .result-meta-card .item-label {
+      color: #94a3b8; font-size: 9.5px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .06em;
+      flex-shrink: 0;
+    }
+    .result-meta-card .item-value {
+      font-weight: 700; font-size: 13px; color: #1e293b;
+      margin-top: 2px; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
+    .result-meta-card .card-approve {
+      background: #fff; border: 1px solid #eef2f7;
+      border-radius: 10px; padding: 8px 12px;
+      flex-shrink: 0;
+    }
+    .result-meta-card .card-actions {
+      display: flex; gap: 10px; flex-shrink: 0;
+    }
+    .result-meta-card .card-actions > * {
+      flex: 1; margin-top: 0 !important;
+      height: 38px; padding: 0 10px; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; border-radius: 10px; box-sizing: border-box;
+      white-space: nowrap;
+    }
+
+    .btn-preview-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
+      background: #fff;
+      color: #334155;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    .btn-preview-item:hover { border-color: #94a3b8; color: #1e293b; }
+
+    .preview-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .55);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .preview-modal-overlay.show { display: flex; }
+    .preview-modal {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 1100px;
+      height: 94vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    }
+    .preview-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .preview-modal-header .fname-title {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px;
+    }
+    .preview-modal-close {
+      background: none;
+      border: none;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      color: #64748b;
+      flex-shrink: 0;
+      padding: 0 4px;
+    }
+    .preview-modal-close:hover { color: #ef4444; }
+    .preview-modal iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #f1f5f9;
+    }
+
+    .btn-download-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s;
+    }
+    .btn-download-item:hover { background: #15803d; }
 
     .btn-download {
       background: #16a34a;
       color: #fff;
       border: none;
       border-radius: 8px;
-      padding: 13px 20px;
+      padding: 12px 20px;
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
@@ -328,12 +643,12 @@ UI = """<!DOCTYPE html>
 
     .approve-row {
       display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #334155; margin-top: 8px;
+      font-size: 13px; color: #334155; margin-top: 16px; line-height: 1.5;
       user-select: none; cursor: pointer;
     }
     .approve-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
 
-    .drive-status { font-size: 12px; margin-top: 2px; }
+    .drive-status { font-size: 12px; margin-top: 0; }
     .drive-status.ok    { color: #166534; }
     .drive-status.error { color: #991b1b; }
 
@@ -346,8 +661,15 @@ UI = """<!DOCTYPE html>
       color: #64748b;
       cursor: pointer;
       transition: border-color .2s, color .2s;
+      margin-top: 0;
     }
     .btn-reset:hover { border-color: #94a3b8; color: #334155; }
+
+    .result-card.show {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
 
     /* Loading */
     .loading-overlay {
@@ -388,9 +710,10 @@ UI = """<!DOCTYPE html>
 <header>
   <div class="logo">CHG <span>Ascensores</span></div>
   <div class="sub">Generador de Informes Membretados</div>
+  <a href="/logout" class="btn-logout">Cerrar sesión</a>
 </header>
 
-<main>
+<main id="mainGrid">
   <!-- ── Columna izquierda: subir PDF ── -->
   <div class="panel">
     <div class="panel-title">
@@ -401,13 +724,12 @@ UI = """<!DOCTYPE html>
     <div class="drop-zone" id="dropZone">
       <input type="file" id="fileInput" accept=".pdf" multiple>
       <div class="drop-icon">📄</div>
-      <div class="drop-text">Arrastrá uno o más PDF aquí</div>
-      <div class="drop-hint">o hacé clic para seleccionar</div>
+      <div class="drop-text">Arrastra aquí tus archivos PDF</div>
+      <div class="drop-hint">o haz clic para seleccionarlos desde tu equipo</div>
     </div>
 
     <div class="file-list" id="fileList"></div>
 
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
       Generar informe(s) membretado(s)
@@ -453,8 +775,19 @@ UI = """<!DOCTYPE html>
 
 <footer>CHG Ascensores · Informes Membretados</footer>
 
+<div class="preview-modal-overlay" id="previewOverlay">
+  <div class="preview-modal">
+    <div class="preview-modal-header">
+      <span class="fname-title" id="previewTitle">Vista previa</span>
+      <button class="preview-modal-close" id="previewClose" title="Cerrar">✕</button>
+    </div>
+    <iframe id="previewFrame" src="" title="Vista previa del PDF"></iframe>
+  </div>
+</div>
+
 <script>
   const dropZone    = document.getElementById('dropZone');
+  const mainGrid    = document.getElementById('mainGrid');
   const fileInput   = document.getElementById('fileInput');
   const fileList    = document.getElementById('fileList');
   const btnGenerate = document.getElementById('btnGenerate');
@@ -481,7 +814,7 @@ UI = """<!DOCTYPE html>
   function renderFileList() {
     fileList.innerHTML = selectedFiles.map((file, idx) => `
       <div class="file-item">
-        <span>📎</span>
+        <span class="ficon">📄</span>
         <span class="fname">${file.name}</span>
         <span class="fsize">${fmtSize(file.size)}</span>
         <button class="remove-btn" data-idx="${idx}" title="Quitar archivo">✕</button>
@@ -559,14 +892,14 @@ UI = """<!DOCTYPE html>
     ].map(([l, v]) => `
         <div>
           <div class="item-label">${l}</div>
-          <div class="item-value">${v}</div>
+          <div class="item-value" title="${v}">${v}</div>
         </div>`).join('');
   }
 
-  // ── Carrusel de resúmenes (cuando se procesan varios PDFs) ──────────────
-  let carouselSlides = [];   // array de strings HTML, una por archivo
+  // ── Carrusel de resúmenes ──────────────────────────────────────────────
+  let carouselSlides = [];
   let carouselIndex  = 0;
-  let approvedIds    = new Set();   // file_id de tarjetas marcadas "Aprobado"
+  let approvedIds    = new Set();
 
   function renderCarousel() {
     const total = carouselSlides.length;
@@ -577,13 +910,18 @@ UI = """<!DOCTYPE html>
     if (carouselIndex < 0) carouselIndex = 0;
     if (carouselIndex > total - 1) carouselIndex = total - 1;
 
+    const dots = Array.from({ length: total }, (_, i) =>
+      `<span class="dot${i === carouselIndex ? ' active' : ''}"></span>`
+    ).join('');
+
     resultMeta.innerHTML = `
       <div class="carousel">
         <div class="carousel-track">
-          <button class="carousel-arrow" id="carouselPrev" ${carouselIndex === 0 ? 'disabled' : ''} title="Anterior">‹</button>
+          <button class="carousel-arrow prev" id="carouselPrev" ${carouselIndex === 0 ? 'disabled' : ''} title="Anterior">‹</button>
           <div class="carousel-slide">${carouselSlides[carouselIndex]}</div>
-          <button class="carousel-arrow" id="carouselNext" ${carouselIndex === total - 1 ? 'disabled' : ''} title="Siguiente">›</button>
+          <button class="carousel-arrow next" id="carouselNext" ${carouselIndex === total - 1 ? 'disabled' : ''} title="Siguiente">›</button>
         </div>
+        <div class="carousel-dots">${dots}</div>
         <div class="carousel-pagination">${carouselIndex + 1} / ${total}</div>
       </div>
     `;
@@ -608,11 +946,43 @@ UI = """<!DOCTYPE html>
     if (!fileId) return '';
     const checked = approvedIds.has(fileId) ? 'checked' : '';
     return `
-      <label class="approve-row" style="grid-column: 1 / -1;">
+      <label class="approve-row card-approve" style="margin-top:0;">
         <input type="checkbox" id="approveCheckbox" data-file-id="${fileId}" ${checked}>
         Aprobado para subir a Drive
       </label>`;
   }
+
+  function itemPreviewHtml(item, showDownload) {
+    if (!item.file_id) return '';
+    const dl = `/download/${item.file_id}`;
+    const safeName = (item.filename || '').replace(/'/g, "\\'");
+    let html = `<button class="btn-preview-item" onclick="openPreview('${item.file_id}', '${safeName}')">👁️ Ver vista previa</button>`;
+    if (showDownload) {
+      html += `<a class="btn-download-item" href="${dl}" download="${item.filename}">⬇️ Descargar este PDF</a>`;
+    }
+    return html;
+  }
+
+  const previewOverlay = document.getElementById('previewOverlay');
+  const previewFrame   = document.getElementById('previewFrame');
+  const previewTitle   = document.getElementById('previewTitle');
+  const previewClose   = document.getElementById('previewClose');
+
+  window.openPreview = function(fileId, filename) {
+    previewTitle.textContent = filename || 'Vista previa';
+    previewFrame.src = `/download/${fileId}?inline=1`;
+    previewOverlay.classList.add('show');
+  };
+
+  function closePreview() {
+    previewOverlay.classList.remove('show');
+    previewFrame.src = '';
+  }
+
+  previewClose.addEventListener('click', closePreview);
+  previewOverlay.addEventListener('click', (e) => {
+    if (e.target === previewOverlay) closePreview();
+  });
 
   function updateDriveButtonState() {
     btnDrive.disabled = approvedIds.size === 0;
@@ -675,9 +1045,13 @@ UI = """<!DOCTYPE html>
         const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
         return `
           <div class="result-meta-card">
-            <div class="card-title">${titulo}</div>
+            <div class="card-header">
+              <div class="card-icon">🏢</div>
+              <div class="card-title" title="${titulo}">${titulo}</div>
+            </div>
             <div class="card-grid">${metaGridHtml(m)}</div>
             ${approveCheckboxHtml(item.file_id)}
+            <div class="card-actions">${itemPreviewHtml(item, true)}</div>
           </div>`;
       });
 
@@ -691,8 +1065,18 @@ UI = """<!DOCTYPE html>
 
       renderCarousel();
     } else {
-      resultMeta.innerHTML = metaGridHtml(data.meta || {})
-        + approveCheckboxHtml(data.file_id);
+      const m = data.meta || {};
+      const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || data.filename}` : data.filename;
+      resultMeta.innerHTML = `
+        <div class="result-meta-card">
+          <div class="card-header">
+            <div class="card-icon">🏢</div>
+            <div class="card-title" title="${titulo}">${titulo}</div>
+          </div>
+          <div class="card-grid">${metaGridHtml(m)}</div>
+          ${approveCheckboxHtml(data.file_id)}
+          <div class="card-actions">${itemPreviewHtml(data, false)}</div>
+        </div>`;
       const approveCb = document.getElementById('approveCheckbox');
       if (approveCb) {
         approveCb.addEventListener('change', () => {
@@ -731,7 +1115,6 @@ UI = """<!DOCTYPE html>
 
     const form = new FormData();
     selectedFiles.forEach(file => form.append('pdf', file));
-    form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
       const resp = await fetch('/generate', { method: 'POST', body: form });
@@ -781,9 +1164,190 @@ UI = """<!DOCTYPE html>
 </body>
 </html>"""
 
+# ─── Pantalla de login ────────────────────────────────────────────────────────
+
+LOGIN_UI = """<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHG — Acceso</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.10);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+    .login-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .login-logo-img {
+      width: 72px;
+      height: auto;
+    }
+    .login-logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      letter-spacing: -0.4px;
+    }
+    .login-title {
+      font-size: 15px;
+      color: #64748b;
+      text-align: center;
+      margin-top: -10px;
+    }
+    .login-form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .login-form label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .login-form input[type=password] {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 15px;
+      color: #1e293b;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .login-form input[type=password]:focus {
+      border-color: #1a1a2e;
+    }
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      background: #1a1a2e;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      margin-top: 4px;
+    }
+    .login-btn:hover { background: #2d2d4e; }
+    .login-error {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      width: 100%;
+      text-align: center;
+    }
+    .login-footer {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-logo">
+      <img class="login-logo-img" src="/static-logo" alt="CHG Logo">
+      <div class="login-logo-text">CHG Ascensores</div>
+    </div>
+    <div class="login-title">Ingresa la contraseña para continuar</div>
+
+    {% if error %}
+    <div class="login-error">⚠️ Contraseña incorrecta. Intenta de nuevo.</div>
+    {% endif %}
+
+    <form class="login-form" method="POST" action="/login">
+      <div>
+        <label for="pwd">Contraseña</label>
+        <input type="password" id="pwd" name="password" autofocus autocomplete="current-password">
+      </div>
+      <button type="submit" class="login-btn">Entrar</button>
+    </form>
+    <div class="login-footer">CHG Ascensores · Informes Membretados</div>
+  </div>
+</body>
+</html>"""
+
+
+import functools
+
+def login_required(f):
+    """Decorador que redirige al login si la sesión no está autenticada."""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = False
+    if request.method == "POST":
+        pwd = request.form.get("password", "")
+        if pwd == APP_PASSWORD:
+            session["authenticated"] = True
+            return redirect(url_for("index"))
+        error = True
+    return render_template_string(LOGIN_UI, error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# Servir el logo en el login sin autenticación
+@app.route("/static-logo")
+def static_logo():
+    import base64 as _b64
+    # Logo incrustado como PNG base64 (mismo que en informe.html)
+    # Se lee del archivo de plantilla para no duplicar
+    try:
+        import re as _re
+        with open(str(TEMPLATE_PATH)) as f:
+            content = f.read()
+        m = _re.search(r'src="data:image/png;base64,([^"]+)"', content)
+        if m:
+            img_bytes = _b64.b64decode(m.group(1))
+            return send_file(io.BytesIO(img_bytes), mimetype="image/png")
+    except Exception:
+        pass
+    return "", 404
+
+
 @app.route("/")
-
-
+@login_required
 def index():
     return render_template_string(UI)
 
@@ -815,12 +1379,13 @@ def process_one_pdf(pdf_bytes: bytes):
     except Exception as exc:
         raise RuntimeError(f"Error al aplicar membrete: {exc}")
 
-    numero   = data.get("meta", {}).get("numero_orden", "informe")
-    filename = f"informe-{numero}.pdf"
-    return filename, pdf_out, data.get("meta", {})
+    meta     = data.get("meta", {})
+    filename = build_output_filename(meta)
+    return filename, pdf_out, meta
 
 
 @app.route("/generate", methods=["POST"])
+@login_required
 def generate():
     files = request.files.getlist("pdf")
     if not files:
@@ -828,7 +1393,7 @@ def generate():
 
     import hashlib, time, zipfile
 
-    # ─── Un solo archivo: comportamiento original (PDF directo) ───────────
+    # ─── Un solo archivo ───────────────────────────────────────────────────
     if len(files) == 1:
         original_name = files[0].filename or "archivo.pdf"
         pdf_bytes = files[0].read()
@@ -841,7 +1406,7 @@ def generate():
             return jsonify({"error": str(exc)}), 500
 
         file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
-        _pdf_store[file_id] = (filename, pdf_out, original_name)
+        _pdf_store[file_id] = (filename, pdf_out, filename)
 
         return jsonify({
             "ok":           True,
@@ -852,10 +1417,10 @@ def generate():
             "download_url": f"/download/{file_id}",
         })
 
-    # ─── Múltiples archivos: procesar en cola y empaquetar en .zip ─────────
-    results = []   # [(filename, pdf_bytes)]
-    items   = []   # [{"filename": ..., "meta": {...}}]
-    errors  = []   # [{"archivo": nombre_original, "error": mensaje}]
+    # ─── Múltiples archivos: empaquetar en .zip ────────────────────────────
+    results = []
+    items   = []
+    errors  = []
 
     for f in files:
         original_name = f.filename or "archivo.pdf"
@@ -865,7 +1430,6 @@ def generate():
             continue
         try:
             filename, pdf_out, meta = process_one_pdf(pdf_bytes)
-            # Evitar nombres duplicados dentro del zip
             base, ext = os.path.splitext(filename)
             candidate = filename
             n = 1
@@ -875,7 +1439,7 @@ def generate():
                 n += 1
             results.append((candidate, pdf_out))
             individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
-            _pdf_store[individual_id] = (candidate, pdf_out, original_name)
+            _pdf_store[individual_id] = (candidate, pdf_out, candidate)
             items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
         except RuntimeError as exc:
             errors.append({"archivo": original_name, "error": str(exc)})
@@ -887,7 +1451,6 @@ def generate():
             "errors": errors,
         }), 500
 
-    # Crear .zip en memoria
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fname, pdf_bytes_ in results:
@@ -910,27 +1473,29 @@ def generate():
 
 
 @app.route("/download/<file_id>")
+@login_required
 def download(file_id):
     if file_id not in _pdf_store:
         return "Archivo no encontrado o expirado.", 404
     filename, file_bytes, _ = _pdf_store[file_id]
     mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
-    return send_file(
+
+    inline = request.args.get("inline", "").strip() in ("1", "true", "yes")
+
+    resp = send_file(
         io.BytesIO(file_bytes),
         mimetype=mimetype,
-        as_attachment=True,
+        as_attachment=not inline,
         download_name=filename,
     )
+    resp.headers["Content-Length"] = str(len(file_bytes))
+    return resp
 
 
 @app.route("/upload-to-drive", methods=["POST"])
+@login_required
 def upload_to_drive():
-    """Reenvía los PDFs aprobados (por file_id) a un webhook de n8n,
-    que se encarga de subirlos a Google Drive.
-
-    Configurar la variable de entorno N8N_WEBHOOK_URL con la URL del
-    webhook de n8n (nodo Webhook -> Google Drive Upload).
-    """
+    """Reenvía los PDFs aprobados a un webhook de n8n para subir a Google Drive."""
     webhook_url = os.environ.get("N8N_WEBHOOK_URL", "").strip()
     if not webhook_url:
         return jsonify({
@@ -952,23 +1517,23 @@ def upload_to_drive():
             results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
             continue
 
-        filename, file_bytes, original_name = _pdf_store[fid]
+        filename, file_bytes, drive_name = _pdf_store[fid]
         try:
             resp = requests.post(
                 webhook_url,
-                files={"data": (original_name, file_bytes, "application/pdf")},
-                data={"filename": original_name},
+                files={"data": (drive_name, file_bytes, "application/pdf")},
+                data={"filename": drive_name},
                 timeout=60,
             )
             if resp.ok:
-                results.append({"file_id": fid, "filename": original_name, "ok": True})
+                results.append({"file_id": fid, "filename": drive_name, "ok": True})
             else:
                 results.append({
-                    "file_id": fid, "filename": original_name, "ok": False,
+                    "file_id": fid, "filename": drive_name, "ok": False,
                     "error": f"n8n respondió con estado {resp.status_code}",
                 })
         except Exception as exc:
-            results.append({"file_id": fid, "filename": original_name, "ok": False, "error": str(exc)})
+            results.append({"file_id": fid, "filename": drive_name, "ok": False, "error": str(exc)})
 
     all_ok = all(r["ok"] for r in results)
     return jsonify({"ok": all_ok, "results": results})
