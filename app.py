@@ -202,19 +202,6 @@ UI = """<!DOCTYPE html>
       text-decoration: none;
     }
     header .btn-logout:hover { border-color: #94a3b8; color: #fff; }
-    header .btn-logout {
-      background: none;
-      border: 1px solid #334155;
-      color: #94a3b8;
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-size: 12px;
-      cursor: pointer;
-      margin-left: 12px;
-      transition: border-color .2s, color .2s;
-      text-decoration: none;
-    }
-    header .btn-logout:hover { border-color: #94a3b8; color: #fff; }
 
     main {
       flex: 1;
@@ -726,7 +713,6 @@ UI = """<!DOCTYPE html>
 <header>
   <div class="logo">CHG <span>Ascensores</span></div>
   <div class="sub">Generador de Informes Membretados</div>
-  <a href="/logout" class="btn-logout">Cerrar sesión</a>
   <a href="/logout" class="btn-logout">Cerrar sesión</a>
 </header>
 
