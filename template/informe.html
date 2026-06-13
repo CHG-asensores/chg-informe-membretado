@@ -88,7 +88,7 @@
   .fotos-grid { display: flex; flex-direction: column; gap: 6mm; }
 
   /* Cada slot de foto */
-  .foto-slot { page-break-inside: avoid; }
+  .foto-slot { page-break-inside: avoid; break-inside: avoid; }
   .foto-slot-titulo {
     font-size: 9pt; font-weight: bold; color: #1f2937;
     margin-bottom: 2mm;
@@ -273,24 +273,22 @@
 {% endfor %}
 
 {% if fotos_con_img %}
-  {% for i in range(0, fotos_con_img|length, 3) %}
-  <div class="fotos-page">
-    <div class="fotos-grid">
-      {% for foto in fotos_con_img[i:i+3] %}
-      <div class="foto-slot">
-        <div class="foto-slot-titulo">{{ foto.etiqueta }}</div>
-        {% set n = foto.imagenes|length %}
-        <div class="foto-slot-imgs{% if n > 1 %} multi{% endif %}">
-          {% for img in foto.imagenes %}
-          <img src="data:image/{{ img.get('ext', 'jpeg') }};base64,{{ img.data_base64 }}"
-               alt="{{ foto.etiqueta }}">
-          {% endfor %}
-        </div>
+<div class="fotos-page">
+  <div class="fotos-grid">
+    {% for foto in fotos_con_img %}
+    <div class="foto-slot">
+      <div class="foto-slot-titulo">{{ foto.etiqueta }}</div>
+      {% set n = foto.imagenes|length %}
+      <div class="foto-slot-imgs{% if n > 1 %} multi{% endif %}">
+        {% for img in foto.imagenes %}
+        <img src="data:image/{{ img.get('ext', 'jpeg') }};base64,{{ img.data_base64 }}"
+             alt="{{ foto.etiqueta }}">
+        {% endfor %}
       </div>
-      {% endfor %}
     </div>
+    {% endfor %}
   </div>
-  {% endfor %}
+</div>
 {% endif %}
 
 <!-- ═══ OBSERVACIONES Y RECOMENDACIONES ═══ -->
