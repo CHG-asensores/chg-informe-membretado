@@ -248,6 +248,7 @@ UI = """<!DOCTYPE html>
       align-items: center;
       gap: 10px;
     }
+    .file-item .ficon { font-size: 18px; flex-shrink: 0; line-height: 1; }
     .file-item .fname { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .file-item .fsize { color: #94a3b8; font-size: 12px; flex-shrink: 0; }
     .file-item .remove-btn {
@@ -348,6 +349,34 @@ UI = """<!DOCTYPE html>
     .result-meta-card .item-value { font-weight: 500; color: #1e293b; margin-top: 2px; }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
+
+    .preview-frame {
+      width: 100%;
+      height: 320px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-top: 10px;
+      background: #fff;
+    }
+
+    .btn-download-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s;
+    }
+    .btn-download-item:hover { background: #15803d; }
 
     .btn-download {
       background: #16a34a;
@@ -462,13 +491,12 @@ UI = """<!DOCTYPE html>
     <div class="drop-zone" id="dropZone">
       <input type="file" id="fileInput" accept=".pdf" multiple>
       <div class="drop-icon">📄</div>
-      <div class="drop-text">Arrastrá uno o más PDF aquí</div>
-      <div class="drop-hint">o hacé clic para seleccionar</div>
+      <div class="drop-text">Arrastra aquí el o los archivos PDF</div>
+      <div class="drop-hint">o haz clic para seleccionarlos desde tu equipo</div>
     </div>
 
     <div class="file-list" id="fileList"></div>
 
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"><label for="observaciones" style="font-size:13px;font-weight:600;color:#334155;text-transform:uppercase;">Observaciones</label><textarea id="observaciones" rows="4" placeholder="Ej: Se recomienda cambiar baterias..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:#f8fafc;box-sizing:border-box;"></textarea></div>
     <button class="btn-generate" id="btnGenerate" disabled>
       <span>⚙️</span>
       Generar informe(s) membretado(s)
@@ -542,7 +570,7 @@ UI = """<!DOCTYPE html>
   function renderFileList() {
     fileList.innerHTML = selectedFiles.map((file, idx) => `
       <div class="file-item">
-        <span>📎</span>
+        <span class="ficon">📄</span>
         <span class="fname">${file.name}</span>
         <span class="fsize">${fmtSize(file.size)}</span>
         <button class="remove-btn" data-idx="${idx}" title="Quitar archivo">✕</button>
@@ -675,6 +703,15 @@ UI = """<!DOCTYPE html>
       </label>`;
   }
 
+  function itemPreviewHtml(item) {
+    if (!item.file_id) return '';
+    const url = `/download/${item.file_id}?inline=1`;
+    const dl  = `/download/${item.file_id}`;
+    return `
+      <iframe class="preview-frame" src="${url}" title="Vista previa ${item.filename}"></iframe>
+      <a class="btn-download-item" href="${dl}" download="${item.filename}">⬇️ Descargar este PDF</a>`;
+  }
+
   function updateDriveButtonState() {
     btnDrive.disabled = approvedIds.size === 0;
     btnDrive.textContent = approvedIds.size > 0
@@ -739,6 +776,7 @@ UI = """<!DOCTYPE html>
             <div class="card-title">${titulo}</div>
             <div class="card-grid">${metaGridHtml(m)}</div>
             ${approveCheckboxHtml(item.file_id)}
+            ${itemPreviewHtml(item)}
           </div>`;
       });
 
@@ -753,7 +791,8 @@ UI = """<!DOCTYPE html>
       renderCarousel();
     } else {
       resultMeta.innerHTML = metaGridHtml(data.meta || {})
-        + approveCheckboxHtml(data.file_id);
+        + approveCheckboxHtml(data.file_id)
+        + itemPreviewHtml(data);
       const approveCb = document.getElementById('approveCheckbox');
       if (approveCb) {
         approveCb.addEventListener('change', () => {
@@ -792,7 +831,6 @@ UI = """<!DOCTYPE html>
 
     const form = new FormData();
     selectedFiles.forEach(file => form.append('pdf', file));
-    form.append('observaciones', document.getElementById('observaciones').value.trim());
 
     try {
       const resp = await fetch('/generate', { method: 'POST', body: form });
@@ -976,10 +1014,14 @@ def download(file_id):
         return "Archivo no encontrado o expirado.", 404
     filename, file_bytes, _ = _pdf_store[file_id]
     mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
+
+    # Si se pide como vista previa (inline), no forzar descarga
+    inline = request.args.get("inline", "").strip() in ("1", "true", "yes")
+
     return send_file(
         io.BytesIO(file_bytes),
         mimetype=mimetype,
-        as_attachment=True,
+        as_attachment=not inline,
         download_name=filename,
     )
 
