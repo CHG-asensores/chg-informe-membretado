@@ -188,7 +188,7 @@ UI = """<!DOCTYPE html>
     .panel {
       background: #fff;
       border-radius: 12px;
-      padding: 28px;
+      padding: 28px 18px;
       box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04);
       display: flex;
       flex-direction: column;
@@ -332,7 +332,7 @@ UI = """<!DOCTYPE html>
     }
     .carousel-arrow {
       background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
-      width: 36px; flex-shrink: 0; cursor: pointer; font-size: 16px;
+      width: 26px; flex-shrink: 0; cursor: pointer; font-size: 16px;
       color: #475569; display: flex; align-items: center; justify-content: center;
       transition: background .2s, color .2s, opacity .2s;
     }
@@ -348,7 +348,7 @@ UI = """<!DOCTYPE html>
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 10px;
-      padding: 24px 26px;
+      padding: 18px 16px;
       display: flex;
       flex-direction: column;
       align-items: stretch;
@@ -356,16 +356,16 @@ UI = """<!DOCTYPE html>
     }
     .result-meta-card .card-title {
       font-weight: 700;
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1.4;
       color: #1e293b;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       text-align: center;
     }
     .result-meta-card .card-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px 24px;
+      gap: 12px 16px;
       font-size: 13px;
       line-height: 1.5;
       color: #475569;
