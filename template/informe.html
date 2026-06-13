@@ -12,6 +12,23 @@
     print-color-adjust: exact;
   }
 
+  /* ═══ Identidad CHG (primera página) ═══ */
+  .chg-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8mm;
+  }
+  .chg-logo-symbol svg {
+    display: block;
+  }
+  .chg-logo-text {
+    font-size: 22pt;
+    font-weight: bold;
+    color: #1a1a1a;
+    letter-spacing: -0.5px;
+  }
+
   /* ═══ Metadatos ═══ */
   .meta-grid {
     display: grid; grid-template-columns: 1fr 1fr;
@@ -130,6 +147,27 @@
 </style>
 </head>
 <body>
+
+<!-- ═══ IDENTIDAD — solo primera página ═══ -->
+<div class="chg-header">
+  <div class="chg-logo-symbol">
+    <svg viewBox="0 0 80 48" xmlns="http://www.w3.org/2000/svg" width="80" height="48">
+      <!-- Tarjeta negra -->
+      <rect width="80" height="48" rx="7" fill="#111"/>
+      <!-- Círculo blanco -->
+      <circle cx="40" cy="24" r="18" fill="#fff"/>
+      <!-- Triángulo A (izq, apunta arriba) -->
+      <polygon points="25,35 34,14 37,35" fill="#2563eb"/>
+      <!-- Triángulo V (der, apunta abajo) relleno azul -->
+      <polygon points="43,13 55,13 49,32" fill="#2563eb"/>
+      <!-- Línea curva que conecta A→V (la "N") -->
+      <path d="M34,14 Q40,30 43,13" stroke="#2563eb" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- Línea curva baja del V -->
+      <path d="M49,32 Q53,38 57,32" stroke="#2563eb" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div class="chg-logo-text">CHG Ascensores</div>
+</div>
 
 <!-- ═══ METADATOS ═══ -->
 <div class="meta-grid">
