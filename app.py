@@ -376,15 +376,15 @@ UI = """<!DOCTYPE html>
       z-index: 1000;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 12px;
     }
     .preview-modal-overlay.show { display: flex; }
     .preview-modal {
       background: #fff;
       border-radius: 12px;
       width: 100%;
-      max-width: 760px;
-      height: 85vh;
+      max-width: 1100px;
+      height: 94vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1113,12 +1113,14 @@ def download(file_id):
     # Si se pide como vista previa (inline), no forzar descarga
     inline = request.args.get("inline", "").strip() in ("1", "true", "yes")
 
-    return send_file(
+    resp = send_file(
         io.BytesIO(file_bytes),
         mimetype=mimetype,
         as_attachment=not inline,
         download_name=filename,
     )
+    resp.headers["Content-Length"] = str(len(file_bytes))
+    return resp
 
 
 @app.route("/upload-to-drive", methods=["POST"])
