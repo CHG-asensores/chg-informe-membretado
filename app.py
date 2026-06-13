@@ -405,11 +405,14 @@ UI = """<!DOCTYPE html>
       align-items: stretch;
       gap: 12px;
       box-shadow: 0 1px 2px rgba(15,23,42,.04);
+      height: 380px;
+      box-sizing: border-box;
     }
     .result-meta-card .card-header {
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-shrink: 0;
     }
     .result-meta-card .card-icon {
       width: 40px;
@@ -424,7 +427,7 @@ UI = """<!DOCTYPE html>
     }
     .result-meta-card .card-title {
       font-weight: 800;
-      font-size: 16px;
+      font-size: 15px;
       line-height: 1.3;
       color: #0f172a;
       letter-spacing: -0.01em;
@@ -436,25 +439,27 @@ UI = """<!DOCTYPE html>
     .result-meta-card .card-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 8px;
       font-size: 13px;
       color: #475569;
       text-align: left;
-      align-items: stretch;
+      flex: 1;
     }
     .result-meta-card .card-grid > div {
       background: #fff;
       border: 1px solid #eef2f7;
-      border-radius: 12px;
-      padding: 10px 12px;
+      border-radius: 10px;
+      padding: 8px 10px;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
+      justify-content: center;
+      overflow: hidden;
     }
     .result-meta-card .item-label {
       color: #94a3b8;
-      font-size: 10.5px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: .06em;
@@ -462,39 +467,41 @@ UI = """<!DOCTYPE html>
     }
     .result-meta-card .item-value {
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       color: #1e293b;
-      margin-top: 5px;
-      line-height: 1.35;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      margin-top: 3px;
+      line-height: 1.3;
+      white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
     }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
     .result-meta-card .card-approve {
       background: #fff;
       border: 1px solid #eef2f7;
-      border-radius: 12px;
-      padding: 14px 16px;
+      border-radius: 10px;
+      padding: 10px 12px;
+      flex-shrink: 0;
     }
     .result-meta-card .card-actions {
       display: flex;
       gap: 10px;
+      flex-shrink: 0;
     }
     .result-meta-card .card-actions > * {
       flex: 1;
       margin-top: 0 !important;
-      height: 44px;
+      height: 40px;
       padding: 0 12px;
-      font-size: 14px;
+      font-size: 13px;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
       border-radius: 10px;
       box-sizing: border-box;
+      white-space: nowrap;
     }
 
     .btn-preview-item {
@@ -868,7 +875,7 @@ UI = """<!DOCTYPE html>
     ].map(([l, v]) => `
         <div>
           <div class="item-label">${l}</div>
-          <div class="item-value">${v}</div>
+          <div class="item-value" title="${v}">${v}</div>
         </div>`).join('');
   }
 
