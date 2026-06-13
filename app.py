@@ -179,9 +179,9 @@ UI = """<!DOCTYPE html>
       display: grid;
       grid-template-columns: 40% 60%;
       align-items: start;
-      gap: 24px;
-      padding: 32px;
-      max-width: 1280px;
+      gap: 20px;
+      padding: 24px;
+      max-width: 1080px;
       width: 100%;
       margin: 0 auto;
     }
@@ -446,9 +446,21 @@ UI = """<!DOCTYPE html>
       border: 1px solid #eef2f7;
       border-radius: 12px;
       padding: 10px 12px;
+      min-height: 72px;
+      box-sizing: border-box;
     }
     .result-meta-card .item-label { color: #94a3b8; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-    .result-meta-card .item-value { font-weight: 700; font-size: 16px; color: #1e293b; margin-top: 5px; line-height: 1.3; }
+    .result-meta-card .item-value {
+      font-weight: 700;
+      font-size: 14px;
+      color: #1e293b;
+      margin-top: 5px;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
     .result-meta-card .card-approve {
