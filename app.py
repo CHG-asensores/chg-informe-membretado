@@ -1204,7 +1204,7 @@ LOGIN_UI = """<!DOCTYPE html>
       gap: 8px;
     }
     .login-logo-img {
-      width: 72px;
+      width: 260px;
       height: auto;
     }
     .login-logo-text {
@@ -1279,7 +1279,6 @@ LOGIN_UI = """<!DOCTYPE html>
   <div class="login-card">
     <div class="login-logo">
       <img class="login-logo-img" src="/static-logo" alt="CHG Logo">
-      <div class="login-logo-text">CHG Ascensores</div>
     </div>
     <div class="login-title">Ingresa la contraseña para continuar</div>
 
