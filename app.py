@@ -1333,20 +1333,8 @@ def logout():
 # Servir el logo en el login sin autenticación
 @app.route("/static-logo")
 def static_logo():
-    import base64 as _b64
-    # Logo incrustado como PNG base64 (mismo que en informe.html)
-    # Se lee del archivo de plantilla para no duplicar
-    try:
-        import re as _re
-        with open(str(TEMPLATE_PATH)) as f:
-            content = f.read()
-        m = _re.search(r'src="data:image/png;base64,([^"]+)"', content)
-        if m:
-            img_bytes = _b64.b64decode(m.group(1))
-            return send_file(io.BytesIO(img_bytes), mimetype="image/png")
-    except Exception:
-        pass
-    return "", 404
+    img_bytes = base64.b64decode(LOGO_B64)
+    return send_file(io.BytesIO(img_bytes), mimetype="image/png")
 
 
 @app.route("/")
