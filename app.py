@@ -350,13 +350,75 @@ UI = """<!DOCTYPE html>
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
 
-    .preview-frame {
-      width: 100%;
-      height: 320px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
+    .btn-preview-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       margin-top: 10px;
       background: #fff;
+      color: #334155;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    .btn-preview-item:hover { border-color: #94a3b8; color: #1e293b; }
+
+    .preview-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .55);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .preview-modal-overlay.show { display: flex; }
+    .preview-modal {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 760px;
+      height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    }
+    .preview-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .preview-modal-header .fname-title {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px;
+    }
+    .preview-modal-close {
+      background: none;
+      border: none;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      color: #64748b;
+      flex-shrink: 0;
+      padding: 0 4px;
+    }
+    .preview-modal-close:hover { color: #ef4444; }
+    .preview-modal iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #f1f5f9;
     }
 
     .btn-download-item {
@@ -491,7 +553,7 @@ UI = """<!DOCTYPE html>
     <div class="drop-zone" id="dropZone">
       <input type="file" id="fileInput" accept=".pdf" multiple>
       <div class="drop-icon">📄</div>
-      <div class="drop-text">Arrastra aquí el o los archivos PDF</div>
+      <div class="drop-text">Arrastra aquí tus archivos PDF</div>
       <div class="drop-hint">o haz clic para seleccionarlos desde tu equipo</div>
     </div>
 
@@ -541,6 +603,16 @@ UI = """<!DOCTYPE html>
 </main>
 
 <footer>CHG Ascensores · Informes Membretados</footer>
+
+<div class="preview-modal-overlay" id="previewOverlay">
+  <div class="preview-modal">
+    <div class="preview-modal-header">
+      <span class="fname-title" id="previewTitle">Vista previa</span>
+      <button class="preview-modal-close" id="previewClose" title="Cerrar">✕</button>
+    </div>
+    <iframe id="previewFrame" src="" title="Vista previa del PDF"></iframe>
+  </div>
+</div>
 
 <script>
   const dropZone    = document.getElementById('dropZone');
@@ -703,14 +775,37 @@ UI = """<!DOCTYPE html>
       </label>`;
   }
 
-  function itemPreviewHtml(item) {
+  function itemPreviewHtml(item, showDownload) {
     if (!item.file_id) return '';
-    const url = `/download/${item.file_id}?inline=1`;
-    const dl  = `/download/${item.file_id}`;
-    return `
-      <iframe class="preview-frame" src="${url}" title="Vista previa ${item.filename}"></iframe>
-      <a class="btn-download-item" href="${dl}" download="${item.filename}">⬇️ Descargar este PDF</a>`;
+    const dl = `/download/${item.file_id}`;
+    const safeName = (item.filename || '').replace(/'/g, "\\'");
+    let html = `<button class="btn-preview-item" onclick="openPreview('${item.file_id}', '${safeName}')">👁️ Ver vista previa</button>`;
+    if (showDownload) {
+      html += `<a class="btn-download-item" href="${dl}" download="${item.filename}">⬇️ Descargar este PDF</a>`;
+    }
+    return html;
   }
+
+  const previewOverlay = document.getElementById('previewOverlay');
+  const previewFrame   = document.getElementById('previewFrame');
+  const previewTitle   = document.getElementById('previewTitle');
+  const previewClose   = document.getElementById('previewClose');
+
+  window.openPreview = function(fileId, filename) {
+    previewTitle.textContent = filename || 'Vista previa';
+    previewFrame.src = `/download/${fileId}?inline=1`;
+    previewOverlay.classList.add('show');
+  };
+
+  function closePreview() {
+    previewOverlay.classList.remove('show');
+    previewFrame.src = '';
+  }
+
+  previewClose.addEventListener('click', closePreview);
+  previewOverlay.addEventListener('click', (e) => {
+    if (e.target === previewOverlay) closePreview();
+  });
 
   function updateDriveButtonState() {
     btnDrive.disabled = approvedIds.size === 0;
@@ -776,7 +871,7 @@ UI = """<!DOCTYPE html>
             <div class="card-title">${titulo}</div>
             <div class="card-grid">${metaGridHtml(m)}</div>
             ${approveCheckboxHtml(item.file_id)}
-            ${itemPreviewHtml(item)}
+            ${itemPreviewHtml(item, true)}
           </div>`;
       });
 
@@ -792,7 +887,7 @@ UI = """<!DOCTYPE html>
     } else {
       resultMeta.innerHTML = metaGridHtml(data.meta || {})
         + approveCheckboxHtml(data.file_id)
-        + itemPreviewHtml(data);
+        + itemPreviewHtml(data, false);
       const approveCb = document.getElementById('approveCheckbox');
       if (approveCb) {
         approveCb.addEventListener('change', () => {
