@@ -10,6 +10,11 @@ NOISE_Y_BOTTOM = 790
 KNOWN_VALUES   = {"Bueno", "Malo", "No Aplica", "condición estable", "condición inestable", "Operativo", "Si Requiere", "Crítico", "-"}
 BOLD_FLAG      = 1 << 4
 
+# Umbrales para las 3 columnas del header (x < LEFT → col izq, x < MID → col central, x >= MID → col der)
+COL_LEFT_MAX   = 180   # columna izquierda: x < 180
+COL_MID_MAX    = 340   # columna central:   180 ≤ x < 340
+                       # columna derecha:   x ≥ 340
+
 
 def extract_lines(page):
     lines = []
@@ -44,8 +49,7 @@ def get_image_positions(page):
 
 def get_firma_y(page):
     """Devuelve la posición Y del texto 'Firma del cliente:' en la página,
-    o None si no aparece. Se usa para separar fotos de inspección de la
-    imagen de firma cuando ambas coexisten en la misma página."""
+    o None si no aparece."""
     for block in page.get_text("dict")["blocks"]:
         if block.get("type") != 0:
             continue
@@ -57,10 +61,7 @@ def get_firma_y(page):
 
 
 def get_foto_labels_y(page):
-    """Devuelve dict {xref_aproximado: y_del_label} con las posiciones Y de
-    cada etiqueta 'Fotografía ...' en la página. Se usa para asignar la
-    imagen correcta a cada slot de foto cuando varias fotos comparten página
-    con la firma."""
+    """Devuelve posiciones Y de etiquetas 'Fotografía ...' en la página."""
     labels = []
     for block in page.get_text("dict")["blocks"]:
         if block.get("type") != 0:
@@ -70,6 +71,15 @@ def get_foto_labels_y(page):
             if re.match(r"^Fotograf[íi]a\b", txt, re.I):
                 labels.append(line["bbox"][1])
     return sorted(labels)
+
+
+def _col(x):
+    """Devuelve 'left', 'mid' o 'right' según la posición X en el header."""
+    if x < COL_LEFT_MAX:
+        return "left"
+    if x < COL_MID_MAX:
+        return "mid"
+    return "right"
 
 
 def parse_pdf(pdf_bytes):
@@ -104,12 +114,19 @@ def parse_pdf(pdf_bytes):
                 if t:
                     meta["titulo"] = t.group(1).strip()
 
+    # Mapping de labels del header a claves de meta
+    # Soporta 3 columnas: izquierda, central y derecha
     HEADER_LABELS = {
-        "ESTADO": "estado", "FECHA DE VENCIMIENTO": "fecha_vencimiento",
-        "TIEMPO ESTIMADO": "tiempo_estimado", "TIPO DE TRABAJO": "tipo_trabajo",
-        "ASIGNADOS": "asignados", "CATEGORÍAS": "categorias",
-        "UBICACIÓN": "ubicacion", "ACTIVO": "activo", "PROCEDIMIENTO": "procedimiento",
-        "PRIORIDAD": "prioridad",
+        "ESTADO":                "estado",
+        "PRIORIDAD":             "prioridad",
+        "FECHA DE VENCIMIENTO":  "fecha_vencimiento",
+        "TIEMPO ESTIMADO":       "tiempo_estimado",
+        "TIPO DE TRABAJO":       "tipo_trabajo",
+        "ASIGNADOS":             "asignados",
+        "CATEGORÍAS":            "categorias",
+        "UBICACIÓN":             "ubicacion",
+        "ACTIVO":                "activo",
+        "PROCEDIMIENTO":         "procedimiento",
     }
     SKIP_LINES = {"CHG Ascensores", "Campos completados",
                   "* Indica que la pregunta es obligatoria",
@@ -118,9 +135,12 @@ def parse_pdf(pdf_bytes):
     state            = "HEADER"
     current_section  = None
     pending_label    = None
-    pending_left     = None
-    pending_right    = None
-    COL_THRESHOLD    = 180
+
+    # pending por columna: left / mid / right
+    pending_left  = None
+    pending_mid   = None
+    pending_right = None
+
     campos_esperados = 0
     campos_parseados = 0
     valores_invalidos = []
@@ -128,6 +148,12 @@ def parse_pdf(pdf_bytes):
 
     seen_repuesto_marker = False
     repuesto_photos_max  = 3
+
+    # ── Estado de fotos tipo "Foto" (Montacarga/Plataforma) ──────────────────
+    # En estos tipos, la sección bold es "Foto" (texto corto), y la etiqueta
+    # del slot viene en la línea siguiente (ej: "Foto de cuarto de motor:").
+    # pending_foto_label guarda la etiqueta hasta que llegue la imagen.
+    pending_foto_label = None
 
     for page_num, page in enumerate(doc):
         lines = extract_lines(page)
@@ -139,7 +165,6 @@ def parse_pdf(pdf_bytes):
                 seen_repuesto_marker = True
                 break
 
-        # Y exacta del texto "Firma del cliente:" en esta página
         firma_text_y = get_firma_y(page)
 
         i = 0
@@ -147,6 +172,7 @@ def parse_pdf(pdf_bytes):
             entry   = lines[i]
             text    = entry["text"]
             is_bold = entry["bold"]
+            x       = entry["x"]
 
             if text in SKIP_LINES:
                 i += 1
@@ -156,17 +182,17 @@ def parse_pdf(pdf_bytes):
                 i += 1
                 continue
 
-            if state == "HEADER" and text in ("Alto", "Medio", "Bajo") and "prioridad" not in meta \
-                    and "estado" not in meta:
-                meta["prioridad"] = text
-                i += 1; continue
+            # Ignorar líneas "Rellenado por..." y "Exportado por..." en cualquier estado
+            if re.match(r"^(Rellenado|Exportado) por ", text):
+                i += 1
+                continue
 
             # ─── HEADER ──────────────────────────────────────────────────────
             if state == "HEADER":
-                m = re.match(r"^(\d+)\s*/\s*(\d+)$", text)
-                if m:
-                    campos_esperados = int(m.group(2))
-                    meta["campos_completados"] = f"{m.group(1)} / {m.group(2)}"
+                m_campos = re.match(r"^(\d+)\s*/\s*(\d+)$", text)
+                if m_campos:
+                    campos_esperados = int(m_campos.group(2))
+                    meta["campos_completados"] = f"{m_campos.group(1)} / {m_campos.group(2)}"
                     i += 1; continue
 
                 if text == "Fecha y Hora de ingreso:":
@@ -176,12 +202,12 @@ def parse_pdf(pdf_bytes):
                     else:
                         i += 1
                     state = "SECTIONS"
-                    pending_left = pending_right = None
+                    pending_left = pending_mid = pending_right = None
                     continue
 
                 if text == "Seguimiento de tiempos y costos":
                     seguimiento["titulo"] = text
-                    pending_left = pending_right = None
+                    pending_left = pending_mid = pending_right = None
                     i += 1
                     while i < len(lines):
                         nxt = lines[i]
@@ -200,44 +226,59 @@ def parse_pdf(pdf_bytes):
                         i += 1
                     continue
 
-                col_is_left = entry["x"] < COL_THRESHOLD
-                pending = pending_left if col_is_left else pending_right
+                col = _col(x)
 
                 if text in HEADER_LABELS:
-                    if col_is_left: pending_left  = HEADER_LABELS[text]
-                    else:           pending_right = HEADER_LABELS[text]
+                    key = HEADER_LABELS[text]
+                    if col == "left":
+                        pending_left  = key
+                    elif col == "mid":
+                        pending_mid   = key
+                    else:
+                        pending_right = key
                     i += 1; continue
+
+                # Determinar qué pending corresponde a esta columna
+                pending = {"left": pending_left, "mid": pending_mid, "right": pending_right}.get(col)
 
                 if pending:
                     if pending == "asignados":
                         meta.setdefault("asignados", [])
-                        if text not in meta["asignados"]: meta["asignados"].append(text)
+                        if text not in meta["asignados"]:
+                            meta["asignados"].append(text)
                     elif pending == "categorias":
                         meta.setdefault("categorias", [])
-                        if text not in meta["categorias"]: meta["categorias"].append(text)
+                        if text not in meta["categorias"]:
+                            meta["categorias"].append(text)
                     elif pending == "ubicacion":
-                        if "ubicacion" not in meta: meta["ubicacion"] = text
+                        if "ubicacion" not in meta:
+                            meta["ubicacion"] = text
                         else:
                             meta.setdefault("direccion", text)
-                            if col_is_left: pending_left  = None
-                            else:           pending_right = None
+                            if col == "left":   pending_left  = None
+                            elif col == "mid":  pending_mid   = None
+                            else:               pending_right = None
                     elif pending == "activo":
-                        if "activo" not in meta: meta["activo"] = text
+                        if "activo" not in meta:
+                            meta["activo"] = text
                         else:
-                            if not re.match(r"^\d+$", text): meta["activo"] += " " + text
+                            if not re.match(r"^\d+$", text):
+                                meta["activo"] += " " + text
                     elif pending == "procedimiento":
                         meta["procedimiento"] = text
-                        if col_is_left: pending_left  = None
-                        else:           pending_right = None
+                        if col == "left":   pending_left  = None
+                        elif col == "mid":  pending_mid   = None
+                        else:               pending_right = None
                     else:
                         meta[pending] = text
-                        if col_is_left: pending_left  = None
-                        else:           pending_right = None
+                        if col == "left":   pending_left  = None
+                        elif col == "mid":  pending_mid   = None
+                        else:               pending_right = None
                     i += 1; continue
 
                 if is_bold or text.endswith(":"):
                     state = "SECTIONS"
-                    pending_left = pending_right = None
+                    pending_left = pending_mid = pending_right = None
                     continue
 
                 if "direccion" in meta:
@@ -253,9 +294,17 @@ def parse_pdf(pdf_bytes):
                     state = "SEGUIMIENTO"
                     i += 1; continue
 
+                # Tipo Ascensor: "Fotografía 1:", "Fotografía 2:", etc.
                 if re.match(r"^Fotograf[íi]a\b.+", text, re.I):
                     state = "PHOTOS"
                     fotos.append({"etiqueta": text.rstrip(":"), "data_base64": "", "ext": "jpeg"})
+                    pending_foto_label = None
+                    i += 1; continue
+
+                # Tipo Montacarga/Plataforma: sección bold "Foto" sola
+                if text == "Foto" and is_bold:
+                    state = "PHOTOS"
+                    pending_foto_label = None  # la etiqueta vendrá en la siguiente línea
                     i += 1; continue
 
                 if text == "Observaciones y Recomendaciones" and is_bold:
@@ -283,6 +332,10 @@ def parse_pdf(pdf_bytes):
             # ─── SEGUIMIENTO ─────────────────────────────────────────────────
             elif state == "SEGUIMIENTO":
                 if is_bold and len(text) > 3 and not text.endswith(":"):
+                    if text == "Foto":
+                        state = "PHOTOS"
+                        pending_foto_label = None
+                        i += 1; continue
                     state = "SECTIONS"
                     current_section = {"nombre": text, "campos": []}
                     secciones.append(current_section)
@@ -291,6 +344,7 @@ def parse_pdf(pdf_bytes):
                 if re.match(r"^Fotograf[íi]a\b.+", text, re.I):
                     state = "PHOTOS"
                     fotos.append({"etiqueta": text.rstrip(":"), "data_base64": "", "ext": "jpeg"})
+                    pending_foto_label = None
                     i += 1; continue
                 if text == "Observaciones y Recomendaciones" and is_bold:
                     state = "OBSERVATIONS"
@@ -303,12 +357,36 @@ def parse_pdf(pdf_bytes):
 
             # ─── PHOTOS ──────────────────────────────────────────────────────
             elif state == "PHOTOS":
+                # Tipo Ascensor: siguiente sección "Fotografía X"
                 if re.match(r"^Fotograf[íi]a\b.+", text, re.I):
                     fotos.append({"etiqueta": text.rstrip(":"), "data_base64": "", "ext": "jpeg"})
+                    pending_foto_label = None
                     i += 1; continue
+
+                # Tipo Montacarga/Plataforma: nueva sección "Foto" bold
+                if text == "Foto" and is_bold:
+                    # pending_foto_label se resetea; la etiqueta vendrá a continuación
+                    pending_foto_label = None
+                    i += 1; continue
+
                 if text == "Observaciones y Recomendaciones" and is_bold:
                     state = "OBSERVATIONS"
                     pending_label = None
+                    i += 1; continue
+
+                # Etiqueta del slot: línea que termina en ":" (ej: "Foto de cuarto de motor:")
+                # O una etiqueta sin ":" (ej: "Plataforma :")  — con espacio antes del ":"
+                if text.endswith(":") and not is_bold:
+                    etiqueta = text.rstrip(":").strip()
+                    # Solo agregar si no hay ya un slot con esta etiqueta sin imagen
+                    already = any(f["etiqueta"] == etiqueta for f in fotos)
+                    if not already:
+                        fotos.append({"etiqueta": etiqueta, "data_base64": "", "ext": "jpeg"})
+                    pending_foto_label = etiqueta
+                    i += 1; continue
+
+                # Cualquier otra cosa que no sea bold ni etiqueta: ignorar
+                # (los "Rellenado por..." ya se saltaron arriba)
 
             # ─── OBSERVATIONS ────────────────────────────────────────────────
             elif state == "OBSERVATIONS":
@@ -435,7 +513,7 @@ def parse_pdf(pdf_bytes):
 
                 repuesto_fotos = obs["detalles_repuesto"]["fotos"]
 
-                # ── Caso 1: imagen de repuesto (mismo criterio que antes) ──
+                # ── Caso 1: imagen de repuesto ──
                 if repuesto_start_y is not None and img_y > repuesto_start_y:
                     repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
                     continue
@@ -450,15 +528,20 @@ def parse_pdf(pdf_bytes):
                     continue
 
                 # ── Caso 2: imagen de firma ──
-                # Solo es firma si está POR DEBAJO del texto "Firma del cliente:"
-                # Esto evita que fotos de inspección (que aparecen antes en la
-                # página) sean confundidas con la firma.
                 if firma_text_y is not None and img_y >= firma_text_y and not firma["data_base64"]:
                     firma["data_base64"] = img_b64
                     firma["ext"]         = img_ext
                     continue
 
                 # ── Caso 3: fotos de inspección ──
+                # Saltear imágenes pequeñas (logos, avatares) — las fotos reales
+                # tienen dimensiones significativamente mayores
+                bbox   = img_pos["bbox"]
+                width  = bbox[2] - bbox[0]
+                height = bbox[3] - bbox[1]
+                if width < 50 or height < 50:
+                    continue  # logo / avatar del técnico
+
                 for foto in fotos:
                     if not foto["data_base64"]:
                         foto["data_base64"] = img_b64
