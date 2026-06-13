@@ -178,6 +178,7 @@ UI = """<!DOCTYPE html>
       flex: 1;
       display: grid;
       grid-template-columns: 1fr 1fr;
+      align-items: start;
       gap: 24px;
       padding: 32px;
       max-width: 1100px;
