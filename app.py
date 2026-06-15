@@ -26,7 +26,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 150 * 1024 * 1024  # 150 MB (varios PDFs)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "chg-ascensores-secret-2024")
 APP_PASSWORD = "BVm8i5nM9YEbtB11M"
-LOGO_B64 = "iVBORw0KGgoAAAANSUhEUgAAAcMAAABoCAYAAACNKptHAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2CpCtkY7ETkJiJxcUgdT3ANk2uTmlyQh3M/Ck5oUGA2kOIJZhKGYIYnBncAL5H6IkfxEDg8VXBgbmCQixpJkMDNtbGRgkbiHEVBYwMPC3MDBsO48QQ4RJQWJRIliIBYiZ0tIYGD4tZ2DgjWRgEL7AwMAVDQsIHG5TALvNnSEfCNMZchhSgSKeDHkMyQx6QJYRgwGDIYMZAKbWPz9HbOBQAADj2ElEQVR42uz9d7Ql53Xei/5WqKodTu6cu9EB3Y1GA93IANEgQYBRpMKjJJOS+HR15WvL7zpJw+PdYY9h6/mOa/mJEh2e3tClpSv7SVZgMIMIghkgidwAGp1zzuH0iTtV1Qrvj1W1zz6NRpBImRR91hi7T5+969Suql17fWt+85vfFN57zw9tOMAW/xdYNBbwgABk8VNhwrPezfypkD37UeDlzB+KHEgBU+wlAZ+E18Nb4UWKw+FJcMgf2hUI5+iQSER5SUR4zRdPOGxxag6JQiBvOF/mxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ==..."
+LOGO_B64 = "iVBORw0KGgoAAAANSUhEUgAAAcMAAABoCAYAAACNKptHAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2CpCtkY7ETkJiJxcUgdT3ANk2uTmlyQh3M/Ck5oUGA2kOIJZhKGYIYnBncAL5H6IkfxEDg8VXBgbmCQixpJkMDNtbGRgkbiHEVBYwMPC3MDBsO48QQ4RJQWJRIliIBYiZ0tIYGD4tZ2DgjWRgEL7AwMAVDQsIHG5TALvNnSEfCNMZchhSgSKeDHkMyQx6QJYRgwGDIYMZAKbWPz9HbOBQAADj2ElEQVR42uz9d7Ql53Xei/5WqKodTu6cu9EB3Y1GA93IANEgQYBRpMKjJJOS+HR15WvL7zpJw+PdYY9h6/mOa/mJEh2e3tClpSv7SVZgMIMIghkgidwAGp1zzuH0iTtV1Qrvj1W1zz6NRpBImRR91hi7T5+969Suql17fWt+85vfFN57zw9tOMAW/xdYNBbwgABk8VNhwrPezfypkD37UeDlzB+KHEgBU+wlAZ+E18Nb4UWKw+FJcMgf2hUI5+iQSER5SUR4zRdPOGxxag6JQiBvOF/mxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ//oHIrs/utu+pqbAUB/k9nf94KC6IFT2d33zd/xh4slftaRzD4Y0X29/J+88Q/nxtyYG3NjbnwfQ=="
 
 BASE_DIR      = Path(__file__).parent
 TEMPLATE_PATH = BASE_DIR / "template" / "informe.html"
@@ -814,6 +814,8 @@ def process_one_pdf(pdf_bytes: bytes):
     except Exception as exc:
         raise RuntimeError(f"Error al aplicar membrete: {exc}")
     meta     = data.get("meta", {})
+    # Agregar observaciones para CHG al meta para enviarlas al webhook
+    meta["para_chg"] = data.get("observaciones", {}).get("para_chg", "")
     filename = build_output_filename(meta)
     return filename, pdf_out, meta
 
