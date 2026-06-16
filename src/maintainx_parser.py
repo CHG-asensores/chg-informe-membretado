@@ -27,10 +27,8 @@ def get_selected_ys(page) -> list:
                 ys.append((rect.y0 + rect.y1) / 2)
     return ys
 
-# Umbrales para las 3 columnas del header (x < LEFT → col izq, x < MID → col central, x >= MID → col der)
-COL_LEFT_MAX   = 180   # columna izquierda: x < 180
-COL_MID_MAX    = 340   # columna central:   180 ≤ x < 340
-                       # columna derecha:   x ≥ 340
+COL_LEFT_MAX   = 180
+COL_MID_MAX    = 340
 
 
 def extract_lines(page):
@@ -47,26 +45,22 @@ def extract_lines(page):
                 continue
             text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
             is_bold = any(s["flags"] & BOLD_FLAG for s in line["spans"] if s["text"].strip())
-            cy = (y0 + line["bbox"][3]) / 2   # centro vertical de la línea
+            cy = (y0 + line["bbox"][3]) / 2
             lines.append({"text": text, "y": y0, "cy": cy, "x": line["bbox"][0], "bold": is_bold})
     lines.sort(key=lambda l: (round(l["y"]), l["x"]))
     return lines
 
 
 def get_image_positions(page):
-    """Devuelve lista de imágenes en la página con su posición Y y xref correcto.
-    Busca el xref real usando clip de cada bloque de imagen para evitar
-    desincronización entre el orden de bloques y el orden de get_images()."""
+    """Devuelve lista de imágenes en la página con su posición Y y xref correcto."""
     positions = []
     for block in page.get_text("dict")["blocks"]:
         if block.get("type") != 1:
             continue
         bbox = block["bbox"]
-        # Buscar el xref cuya imagen se renderiza en este bbox
         xref = None
         clip = fitz.Rect(bbox)
         for img in page.get_images(full=True):
-            # Verificar que la imagen aparece dentro del clip usando get_image_rects
             try:
                 rects = page.get_image_rects(img[0])
                 for r in rects:
@@ -77,7 +71,6 @@ def get_image_positions(page):
                 pass
             if xref:
                 break
-        # Fallback: si no encontró por rect, usar orden posicional
         if xref is None:
             idx = len(positions)
             all_imgs = page.get_images(full=True)
@@ -114,7 +107,6 @@ def get_foto_labels_y(page):
 
 
 def _col(x):
-    """Devuelve 'left', 'mid' o 'right' según la posición X en el header."""
     if x < COL_LEFT_MAX:
         return "left"
     if x < COL_MID_MAX:
@@ -140,7 +132,6 @@ def parse_pdf(pdf_bytes):
     comentarios = []
     historial   = []
 
-    # Número de orden del encabezado azul
     for block in doc[0].get_text("dict")["blocks"]:
         if block.get("type") != 0:
             continue
@@ -154,8 +145,6 @@ def parse_pdf(pdf_bytes):
                 if t:
                     meta["titulo"] = t.group(1).strip()
 
-    # Mapping de labels del header a claves de meta
-    # Soporta 3 columnas: izquierda, central y derecha
     HEADER_LABELS = {
         "ESTADO":                "estado",
         "PRIORIDAD":             "prioridad",
@@ -175,11 +164,9 @@ def parse_pdf(pdf_bytes):
     state            = "HEADER"
     current_section  = None
     pending_label    = None
-
-    # pending por columna: left / mid / right
-    pending_left  = None
-    pending_mid   = None
-    pending_right = None
+    pending_left     = None
+    pending_mid      = None
+    pending_right    = None
 
     campos_esperados = 0
     campos_parseados = 0
@@ -188,11 +175,6 @@ def parse_pdf(pdf_bytes):
 
     seen_repuesto_marker = False
     repuesto_photos_max  = 3
-
-    # ── Estado de fotos tipo "Foto" (Montacarga/Plataforma) ──────────────────
-    # En estos tipos, la sección bold es "Foto" (texto corto), y la etiqueta
-    # del slot viene en la línea siguiente (ej: "Foto de cuarto de motor:").
-    # pending_foto_label guarda la etiqueta hasta que llegue la imagen.
     pending_foto_label = None
 
     for page_num, page in enumerate(doc):
@@ -207,7 +189,6 @@ def parse_pdf(pdf_bytes):
 
         firma_text_y = get_firma_y(page)
 
-        # Círculos seleccionados (azul relleno) en esta página
         selected_ys = get_selected_ys(page)
 
         i = 0
@@ -225,12 +206,10 @@ def parse_pdf(pdf_bytes):
                 i += 1
                 continue
 
-            # Ignorar líneas "Rellenado por..." y "Exportado por..." en cualquier estado
             if re.match(r"^(Rellenado|Exportado) por ", text):
                 i += 1
                 continue
 
-            # Ignorar sección "Descripción" y su texto explicativo del formulario
             if text == "Descripción":
                 i += 1
                 continue
@@ -289,7 +268,6 @@ def parse_pdf(pdf_bytes):
                         pending_right = key
                     i += 1; continue
 
-                # Determinar qué pending corresponde a esta columna
                 pending = {"left": pending_left, "mid": pending_mid, "right": pending_right}.get(col)
 
                 if pending:
@@ -345,17 +323,15 @@ def parse_pdf(pdf_bytes):
                     state = "SEGUIMIENTO"
                     i += 1; continue
 
-                # Tipo Ascensor: "Fotografía 1:", "Fotografía 2:", etc.
                 if re.match(r"^Fotograf[íi]a\b.+", text, re.I):
                     state = "PHOTOS"
                     fotos.append({"etiqueta": text.rstrip(":"), "imagenes": [], "_y": entry["y"], "_pn": page_num})
                     pending_foto_label = None
                     i += 1; continue
 
-                # Tipo Montacarga/Plataforma: sección bold "Foto" sola
                 if text == "Foto" and is_bold:
                     state = "PHOTOS"
-                    pending_foto_label = None  # la etiqueta vendrá en la siguiente línea
+                    pending_foto_label = None
                     i += 1; continue
 
                 if text == "Observaciones y Recomendaciones" and is_bold:
@@ -374,13 +350,8 @@ def parse_pdf(pdf_bytes):
                     i += 1; continue
 
                 if pending_label and current_section is not None:
-                    # Verificar si esta línea es la opción seleccionada.
-                    # En Montacarga/Plataforma aparecen todas las opciones;
-                    # en Ascensor solo aparece la opción seleccionada.
-                    # Usamos el círculo azul (selected_ys) cuando está disponible.
                     is_selected = any(abs(sy - entry["cy"]) < SEL_TOL for sy in selected_ys)
                     if selected_ys:
-                        # Hay círculos en la página → solo guardar si este está seleccionado
                         if is_selected:
                             current_section["campos"].append({"etiqueta": pending_label, "valor": text})
                             campos_parseados += 1
@@ -388,7 +359,6 @@ def parse_pdf(pdf_bytes):
                                 valores_invalidos.append({"etiqueta": pending_label, "valor": text})
                             pending_label = None
                     else:
-                        # Sin círculos detectados (fallback): tomar el primer valor como antes
                         current_section["campos"].append({"etiqueta": pending_label, "valor": text})
                         campos_parseados += 1
                         if text not in KNOWN_VALUES:
@@ -423,23 +393,17 @@ def parse_pdf(pdf_bytes):
 
             # ─── PHOTOS ──────────────────────────────────────────────────────
             elif state == "PHOTOS":
-                # Tipo Ascensor: siguiente sección "Fotografía X"
                 if re.match(r"^Fotograf[íi]a\b.+", text, re.I):
                     fotos.append({"etiqueta": text.rstrip(":"), "imagenes": [], "_y": entry["y"], "_pn": page_num})
                     pending_foto_label = None
                     i += 1; continue
-
-                # Tipo Montacarga/Plataforma: nueva sección "Foto" bold
                 if text == "Foto" and is_bold:
                     pending_foto_label = None
                     i += 1; continue
-
                 if text == "Observaciones y Recomendaciones" and is_bold:
                     state = "OBSERVATIONS"
                     pending_label = None
                     i += 1; continue
-
-                # Etiqueta del slot: línea que termina en ":"
                 if text.endswith(":") and not is_bold:
                     etiqueta = text.rstrip(":").strip()
                     already = any(f["etiqueta"] == etiqueta for f in fotos)
@@ -558,8 +522,50 @@ def parse_pdf(pdf_bytes):
             comentarios.append(current_comentario)
             current_comentario = None
 
-        # ── Asignación de imágenes por posición Y ────────────────────────────
+        # ── Asignación de imágenes por posición Y con rangos exactos ──────────
         img_positions = get_image_positions(page)
+
+        # Construir lista de slots en esta página (fotos de inspección + repuesto)
+        # con su Y de inicio y Y de fin (= Y de inicio del siguiente slot o firma)
+        # Esto garantiza que cada imagen queda en su slot correcto sin desbordarse.
+
+        # Slots de fotos de inspección en esta página
+        slots_pagina = [
+            f for f in fotos
+            if f.get("_pn") == page_num
+        ]
+        slots_pagina_sorted = sorted(slots_pagina, key=lambda f: f.get("_y", 0))
+
+        # Slot de repuesto en esta página (si existe marcador)
+        repuesto_slot_y = repuesto_start_y  # None si no hay en esta página
+
+        # Construir lista unificada de (y_inicio, y_fin, tipo, referencia)
+        # tipo: "inspeccion" | "repuesto" | "firma"
+        puntos = []
+        for idx, slot in enumerate(slots_pagina_sorted):
+            y_ini = slot.get("_y", 0)
+            # y_fin = inicio del siguiente slot en la misma página, o firma, o fin de página
+            if idx + 1 < len(slots_pagina_sorted):
+                y_fin = slots_pagina_sorted[idx + 1].get("_y", 9999)
+            else:
+                y_fin = 9999
+            # Si hay firma en esta página, acotar
+            if firma_text_y is not None:
+                y_fin = min(y_fin, firma_text_y)
+            # Si hay repuesto en esta página entre ini y fin, acotar
+            if repuesto_slot_y is not None and y_ini < repuesto_slot_y < y_fin:
+                y_fin = repuesto_slot_y
+            puntos.append((y_ini, y_fin, "inspeccion", slot))
+
+        if repuesto_slot_y is not None:
+            # y_fin del repuesto = firma_text_y si está en esta página, si no fin de página
+            y_fin_rep = firma_text_y if firma_text_y is not None else 9999
+            puntos.append((repuesto_slot_y, y_fin_rep, "repuesto", None))
+
+        if firma_text_y is not None:
+            puntos.append((firma_text_y, 9999, "firma", None))
+
+        repuesto_fotos = obs["detalles_repuesto"]["fotos"]
 
         for img_pos in img_positions:
             xref = img_pos.get("xref")
@@ -571,62 +577,43 @@ def parse_pdf(pdf_bytes):
                 img_ext  = base_img.get("ext", "jpeg")
                 img_y    = img_pos["y"]
 
-                repuesto_fotos = obs["detalles_repuesto"]["fotos"]
-
-                # ── Caso 1: imagen de repuesto ──
-                if repuesto_start_y is not None and img_y > repuesto_start_y:
-                    repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
-                    continue
-
-                if (
-                    repuesto_start_y is None
-                    and seen_repuesto_marker
-                    and len(repuesto_fotos) < repuesto_photos_max
-                    and (firma_text_y is None or img_y < firma_text_y)
-                ):
-                    repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
-                    continue
-
-                # ── Caso 2: imagen de firma ──
-                if firma_text_y is not None and img_y >= firma_text_y and not firma["data_base64"]:
-                    firma["data_base64"] = img_b64
-                    firma["ext"]         = img_ext
-                    continue
-
-                # ── Caso 3: fotos de inspección ──
                 # Saltear imágenes pequeñas (logos, avatares)
                 bbox   = img_pos["bbox"]
                 width  = bbox[2] - bbox[0]
                 height = bbox[3] - bbox[1]
                 if width < 50 or height < 50:
-                    continue  # logo / avatar del técnico
+                    continue
 
-                # Asignar al slot cuya etiqueta esté más cerca hacia arriba
-                # en la misma página, o en una página anterior.
-                best_slot = None
-                best_score = (-1, float("inf"))   # (page_num, dy) — mayor pn y menor dy
-                for foto in fotos:
-                    slot_pn = foto.get("_pn", -1)
-                    slot_y  = foto.get("_y", -1)
-                    if slot_pn < 0:
-                        continue
-                    if slot_pn == page_num:
-                        # Misma página: la etiqueta debe estar encima de la imagen
-                        dy = img_y - slot_y
-                        if dy >= 0:
-                            score = (slot_pn, dy)
-                            if score[0] > best_score[0] or (score[0] == best_score[0] and score[1] < best_score[1]):
-                                best_score = score
-                                best_slot  = foto
-                    elif slot_pn < page_num:
-                        # Página anterior: candidato solo si no hay ninguno en la misma página
-                        score = (slot_pn, 0)
-                        if best_score[0] < slot_pn:
-                            best_score = score
-                            best_slot  = foto
+                # Buscar a qué slot pertenece esta imagen por rango Y
+                asignada = False
+                for (y_ini, y_fin, tipo, ref) in puntos:
+                    if y_ini <= img_y < y_fin:
+                        if tipo == "firma":
+                            if not firma["data_base64"]:
+                                firma["data_base64"] = img_b64
+                                firma["ext"]         = img_ext
+                        elif tipo == "repuesto":
+                            repuesto_fotos.append({"data_base64": img_b64, "ext": img_ext})
+                        elif tipo == "inspeccion":
+                            ref["imagenes"].append({"data_base64": img_b64, "ext": img_ext})
+                        asignada = True
+                        break
 
-                if best_slot is not None:
-                    best_slot["imagenes"].append({"data_base64": img_b64, "ext": img_ext})
+                # Si no cayó en ningún slot de esta página, buscar en páginas anteriores
+                if not asignada:
+                    # Caso: imagen antes del primer slot de esta página
+                    # o imagen en página sin slots definidos
+                    # → asignar al último slot de inspección conocido (página anterior)
+                    if img_y < firma_text_y if firma_text_y else True:
+                        # Buscar slot en páginas anteriores
+                        best_slot = None
+                        for foto in fotos:
+                            slot_pn = foto.get("_pn", -1)
+                            if slot_pn < page_num and slot_pn >= 0:
+                                if best_slot is None or slot_pn > best_slot.get("_pn", -1):
+                                    best_slot = foto
+                        if best_slot is not None and not seen_repuesto_marker:
+                            best_slot["imagenes"].append({"data_base64": img_b64, "ext": img_ext})
 
             except Exception:
                 pass
@@ -637,7 +624,6 @@ def parse_pdf(pdf_bytes):
     if len(asignados) > 1 and all(" " not in a for a in asignados):
         meta["asignados"] = [" ".join(asignados)]
 
-    # Quitar campo interno _y de los slots de fotos
     for foto in fotos:
         foto.pop("_y", None)
 
