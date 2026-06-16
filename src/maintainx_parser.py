@@ -577,11 +577,13 @@ def parse_pdf(pdf_bytes):
                 img_ext  = base_img.get("ext", "jpeg")
                 img_y    = img_pos["y"]
 
-                # Saltear imágenes pequeñas (logos, avatares)
+                # Saltear imágenes muy pequeñas (logos, avatares)
+                # EXCEPCIÓN: no filtrar si está en zona de firma (puede ser firma manuscrita angosta)
                 bbox   = img_pos["bbox"]
                 width  = bbox[2] - bbox[0]
                 height = bbox[3] - bbox[1]
-                if width < 50 or height < 50:
+                en_zona_firma = firma_text_y is not None and img_y >= firma_text_y
+                if not en_zona_firma and (width < 50 or height < 50):
                     continue
 
                 # Buscar a qué slot pertenece esta imagen por rango Y
