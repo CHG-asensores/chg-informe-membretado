@@ -785,7 +785,7 @@ def logout():
 @app.route("/static-logo")
 def static_logo():
     img_bytes = base64.b64decode(LOGO_B64)
-    return send_file(io.BytesIO(img_bytes), mimetype="image/png")
+    return send_file(io.BytesIO(img_bytes), mimetype="image/jpeg")
 
 @app.route("/")
 @login_required
