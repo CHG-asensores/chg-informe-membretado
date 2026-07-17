@@ -19,7 +19,7 @@ from flask import Flask, jsonify, render_template_string, request, send_file, se
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
-from maintainx_parser import parse_pdf
+from maintainx_api import parse_ot_desde_pdf
 from render_html import render_html
 
 app = Flask(__name__)
@@ -55,12 +55,29 @@ def extraer_nombre_edificio(activo: str, ubicacion: str = "") -> str:
 
 
 def extraer_mes(meta: dict) -> str:
+    # 1) Templates viejos: traen "Fecha y Hora de ingreso"
     fecha_ingreso = meta.get("fecha_hora_ingreso", "") or ""
     m = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{4})", fecha_ingreso)
     if m:
         mes_num = int(m.group(2))
         if mes_num in MESES_ES:
             return MESES_ES[mes_num]
+
+    # 2) MODULO 1: no tiene fecha de ingreso. La fecha real del mantenimiento es
+    #    completedAt. Sin esto, un informe de julio generado en agosto se
+    #    nombraba "AGOSTO".
+    completado = meta.get("completado_en", "") or ""
+    if completado:
+        try:
+            import datetime as _dt
+            d = _dt.datetime.fromisoformat(completado.replace("Z", "+00:00"))
+            d = d.astimezone(_dt.timezone(_dt.timedelta(hours=-5)))  # Lima
+            if d.month in MESES_ES:
+                return MESES_ES[d.month]
+        except Exception:
+            pass
+
+    # 3) Ultimo recurso
     import datetime
     return MESES_ES.get(datetime.date.today().month, "")
 
@@ -797,9 +814,9 @@ _pdf_store: dict = {}
 
 def process_one_pdf(pdf_bytes: bytes):
     try:
-        data = parse_pdf(pdf_bytes)
+        data = parse_ot_desde_pdf(pdf_bytes)
     except Exception as exc:
-        raise RuntimeError(f"Error al parsear el PDF: {exc}")
+        raise RuntimeError(f"Error al leer la OT desde MaintainX: {exc}")
     try:
         html_b64 = render_html(data, str(TEMPLATE_PATH), str(MEMBRETE_PATH))
         html_bytes = base64.b64decode(html_b64)
@@ -814,7 +831,7 @@ def process_one_pdf(pdf_bytes: bytes):
     except Exception as exc:
         raise RuntimeError(f"Error al aplicar membrete: {exc}")
     meta     = data.get("meta", {})
-    # Agregar observaciones para CHG al meta para enviarlas al webhook
+    # Observaciones internas: van al webhook de Drive, NUNCA al PDF del cliente
     meta["para_chg"] = data.get("observaciones", {}).get("para_chg", "")
     filename = build_output_filename(meta)
     return filename, pdf_out, meta
