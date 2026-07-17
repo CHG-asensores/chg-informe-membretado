@@ -72,6 +72,10 @@
   /* ═══ Secciones ═══ */
   .seccion { margin-top: 5mm; page-break-inside: avoid; }
   .seccion-titulo { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin-bottom: 3mm; page-break-after: avoid; }
+  .seccion-descripcion {
+    font-size: 9.5pt; color: #4b5563; line-height: 1.55;
+    text-align: justify; margin-bottom: 3.5mm;
+  }
   .campo { margin-bottom: 3mm; page-break-inside: avoid; }
   .campo-etiqueta { font-size: 10pt; color: #1f2937; margin-bottom: 1mm; }
   .campo-valor { font-size: 10pt; color: #1a1a1a; display: flex; align-items: center; gap: 6px; }
@@ -239,6 +243,9 @@
 {% for seccion in data.secciones %}
 <div class="seccion">
   <div class="seccion-titulo">{{ seccion.nombre }}</div>
+  {% if seccion.descripcion %}
+  <div class="seccion-descripcion">{{ seccion.descripcion }}</div>
+  {% endif %}
   {% for campo in seccion.campos %}
   <div class="campo">
     <div class="campo-etiqueta">{{ campo.etiqueta }}:</div>
@@ -324,6 +331,15 @@
     {% else %}
       <div class="obs-valor">{{ obs_cliente }}</div>
     {% endif %}
+  </div>
+  {% elif ef == 'Operativo' and not dr_info %}
+  {# El MODULO 1 no tiene campo de observaciones para el cliente. Si el equipo
+     quedo Operativo y no hay nota de repuestos, se declara explicitamente.
+     Si la Evaluacion Final NO es Operativo, este bloque NO sale: decir "sin
+     observaciones" contradiria el propio informe. #}
+  <div class="obs-row">
+    <div class="obs-label">Observaciones y Recomendaciones para cliente:</div>
+    <div class="obs-valor">Sin observaciones.</div>
   </div>
   {% endif %}
 
