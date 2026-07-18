@@ -5,6 +5,7 @@ Reemplaza el parseo por coordenadas: los campos vienen etiquetados, no posiciona
 Requiere la variable de entorno MAINTAINX_API_KEY.
 """
 import base64
+import io
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -209,9 +210,8 @@ def _adjuntos(value, descargar=True, _fetch=None):
         url = a.get("url")
         if not url:
             continue
-        ext = (a.get("fileName", "") or "").rsplit(".", 1)[-1].lower() or "jpeg"
-        if ext == "jpg":
-            ext = "jpeg"
+        # _optimizar_imagen reencodea todo a JPEG, sea cual sea el original
+        ext = "jpeg"
         if not descargar:
             out.append({"data_base64": "", "ext": ext, "fileName": a.get("fileName", "")})
             continue
@@ -254,11 +254,53 @@ def _nombre_usuario(uid, api_key):
     return nombre
 
 
+# Las fotos se imprimen a 89 mm de ancho como maximo (A4 con margenes, 2 por
+# fila). A 300 dpi eso son 1051 px: por encima de ~1100 px se estan cargando
+# pixeles que la impresora nunca va a usar.
+MAX_PX = 1100
+CALIDAD_JPEG = 82
+
+
+def _optimizar_imagen(raw):
+    """
+    Reduce y reencodea a JPEG antes de meter la foto en el HTML.
+
+    El parser viejo sacaba las fotos del PDF de MaintainX, ya reducidas por
+    ellos. Por API llegan los originales de S3 (fotos de celular): un informe
+    salia de 18.8 MB. Con esto baja a ~2.4 MB sin perder resolucion util.
+
+    OJO con la firma: es un PNG con transparencia. Convertir a RGB a secas la
+    deja negra sobre negro; hay que componerla sobre blanco primero.
+    """
+    try:
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(raw))
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+            fondo = Image.new("RGB", im.size, (255, 255, 255))
+            fondo.paste(im, mask=im.split()[-1])
+            im = fondo
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+
+        w, h = im.size
+        if max(w, h) > MAX_PX:
+            r = MAX_PX / max(w, h)
+            im = im.resize((max(1, round(w * r)), max(1, round(h * r))), Image.LANCZOS)
+
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=CALIDAD_JPEG, optimize=True)
+        return buf.getvalue()
+    except Exception:
+        return raw  # si algo falla, mejor la foto pesada que ninguna foto
+
+
 def _descargar_bytes(url):
     """Las URLs de MaintainX son S3 pre-firmadas (X-Amz-Expires=3600). No llevan auth."""
     r = requests.get(url, timeout=30)
     r.raise_for_status()
-    return base64.b64encode(r.content).decode("utf-8")
+    return base64.b64encode(_optimizar_imagen(r.content)).decode("utf-8")
 
 
 def _prefetch_adjuntos(w, max_workers=8):
