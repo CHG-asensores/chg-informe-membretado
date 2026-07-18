@@ -109,7 +109,9 @@
   }
   .foto-slot-imgs img {
     border: 2px solid #dbeafe;
-    border-radius: 2px;
+    /* Sin border-radius: las esquinas redondeadas obligan a Chromium a
+       rasterizar la imagen con transparencia y la reencodea a PNG sin
+       perdida (una foto de 200 KB terminaba pesando 2 MB en el PDF). */
     object-fit: contain;
     display: block;
     max-height: 80mm;
@@ -143,7 +145,7 @@
   }
   .repuesto-fotos { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 2mm; justify-content: flex-start; align-items: flex-start; }
   .repuesto-fotos.una-foto .repuesto-foto-img { max-width: 75%; }
-  .repuesto-foto-img { max-width: calc(50% - 1.5mm); max-height: 75mm; width: auto; height: auto; border: 2px solid #dbeafe; border-radius: 3px; display: block; }
+  .repuesto-foto-img { max-width: calc(50% - 1.5mm); max-height: 75mm; width: auto; height: auto; border: 2px solid #dbeafe; display: block; }
 
   /* ═══ Firma ═══ */
   .firma-box {
