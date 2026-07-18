@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  @page { size: A4; margin: 32mm 14mm 28mm 14mm; }
+  /* Margen inferior 34mm (antes 28): el bloque de contacto del membrete sube
+     mas de lo que 28mm dejaban libre y el texto se le encimaba. 6mm ~= una
+     fila de prosa a 9.5pt/1.55. */
+  @page { size: A4; margin: 32mm 14mm 34mm 14mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: Arial, Helvetica, sans-serif;
