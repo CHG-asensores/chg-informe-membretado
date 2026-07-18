@@ -1,9 +1,16 @@
 # ── Base ──────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
+# Zona horaria: el contenedor corre en UTC y CHG opera en Lima (UTC-5).
+# Sin esto, zipfile.writestr() estampa los archivos del ZIP con hora UTC y
+# Windows los muestra 5 horas adelantados al descomprimir. Los logs de gunicorn
+# tambien salian en UTC. (Los PDFs no estaban afectados: maintainx_api.py
+# convierte a Lima de forma explicita.)
+ENV TZ=America/Lima
+
 # Dependencias de sistema para Playwright / Chromium
 RUN apt-get update && apt-get install -y \
-    wget curl gnupg ca-certificates \
+    tzdata wget curl gnupg ca-certificates \
     libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libdbus-1-3 libxcb1 libxkbcommon0 libx11-6 \
     libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
