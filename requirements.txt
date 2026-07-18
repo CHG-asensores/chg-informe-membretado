@@ -5,3 +5,4 @@ jinja2
 playwright
 python-docx
 requests
+pillow
