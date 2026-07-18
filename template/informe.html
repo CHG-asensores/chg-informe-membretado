@@ -70,11 +70,17 @@
   .fecha-line strong { font-weight: bold; }
 
   /* ═══ Secciones ═══ */
-  .seccion { margin-top: 5mm; page-break-inside: avoid; }
+  /* Sin page-break-inside: avoid. Las secciones del MODULO 1 (prosa + 24-29
+     items) no caben en una pagina, asi que la regla solo empujaba la seccion
+     entera a la pagina siguiente y dejaba media pagina en blanco.
+     La cohesion la dan .seccion-titulo (no se separa de su primer item) y
+     .campo (un item no se parte por la mitad). */
+  .seccion { margin-top: 5mm; }
   .seccion-titulo { font-size: 11pt; font-weight: bold; color: #1a1a1a; margin-bottom: 3mm; page-break-after: avoid; }
   .seccion-descripcion {
     font-size: 9.5pt; color: #4b5563; line-height: 1.55;
     text-align: justify; margin-bottom: 3.5mm;
+    orphans: 3; widows: 3;   /* si la prosa se parte, minimo 3 lineas por lado */
   }
   .campo { margin-bottom: 3mm; page-break-inside: avoid; }
   .campo-etiqueta { font-size: 10pt; color: #1f2937; margin-bottom: 1mm; }
@@ -86,6 +92,7 @@
   }
 
   /* ═══ Fotografías de inspección ═══ */
+  .seccion-fotos { margin-top: 4mm; }
   .fotos-page { page-break-before: always; }
   .fotos-grid { display: flex; flex-direction: column; gap: 6mm; }
 
@@ -252,10 +259,25 @@
     <div class="campo-valor"><span class="radio-blue"></span><span>{{ campo.valor }}</span></div>
   </div>
   {% endfor %}
+
+  {# Las fotos van al cierre de su propia seccion, igual que en MaintainX #}
+  {% for foto in seccion.get('fotos', []) %}
+    {% if foto.imagenes %}
+    <div class="foto-slot seccion-fotos">
+      <div class="foto-slot-titulo">{{ foto.etiqueta }}</div>
+      {% set n = foto.imagenes|length %}
+      <div class="foto-slot-imgs{% if n > 1 %} multi{% endif %}">
+        {% for img in foto.imagenes %}
+        <img src="data:image/{{ img.get('ext', 'jpeg') }};base64,{{ img.data_base64 }}" alt="{{ foto.etiqueta }}">
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
 </div>
 {% endfor %}
 
-<!-- ═══ FOTOGRAFÍAS DE INSPECCIÓN ═══ -->
+<!-- ═══ FOTOGRAFÍAS HUÉRFANAS (sin sección). Normalmente vacío. ═══ -->
 {% set fotos_con_img = [] %}
 {% for f in data.fotos %}
   {% if f.imagenes and f.imagenes|length > 0 %}
@@ -285,6 +307,10 @@
 <!-- ═══ OBSERVACIONES Y RECOMENDACIONES ═══ -->
 <div class="obs-page">
   <div class="obs-titulo">Observaciones y Recomendaciones</div>
+
+  {% if data.observaciones.get('descripcion') %}
+  <div class="seccion-descripcion">{{ data.observaciones.descripcion }}</div>
+  {% endif %}
 
   {% set ef = data.observaciones.get('evaluacion_final', '') %}
   {% if ef and ef != '-' %}
