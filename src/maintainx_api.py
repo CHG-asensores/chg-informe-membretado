@@ -339,6 +339,7 @@ def construir_data(w, descargar_fotos=True, _fetch=None, resolver_usuario=None):
     secciones = []
     fotos = []
     obs = {
+        "descripcion": "",
         "evaluacion_final": "",
         "para_cliente": "",
         "para_chg": "",
@@ -347,13 +348,6 @@ def construir_data(w, descargar_fotos=True, _fetch=None, resolver_usuario=None):
     firma = {"data_base64": "", "ext": "png", "texto": ""}
 
     no_publicado = []
-
-    # Cuenta labels de FILE repetidos dentro de un mismo padre
-    labels_file_repetidos = {}
-    for f in fields:
-        if f.get("type") == "FILE":
-            k = (f.get("parentId"), _norm(f.get("label")))
-            labels_file_repetidos[k] = labels_file_repetidos.get(k, 0) + 1
 
     seccion_actual = None
     en_observaciones = False
@@ -381,9 +375,13 @@ def construir_data(w, descargar_fotos=True, _fetch=None, resolver_usuario=None):
         if es_raiz and tipo == "HEADING":
             en_observaciones = "observacion" in nlabel
             if en_observaciones:
+                # Sus hijos van al bloque de observaciones, pero la prosa del
+                # HEADING es parte del informe y antes se perdia entera.
+                obs["descripcion"] = (f.get("description") or "").strip()
                 seccion_actual = None
                 continue
             seccion_actual = {
+                "fotos": [],
                 "nombre": label,
                 # La prosa tecnica vive en el description del HEADING, en el template
                 # de MaintainX. Se lee en runtime: si CHG la edita, el informe se
@@ -449,29 +447,28 @@ def construir_data(w, descargar_fotos=True, _fetch=None, resolver_usuario=None):
             if nlabel in LABELS_REPUESTO_FOTOS:
                 obs["detalles_repuesto"]["fotos"].extend(imgs)
             elif seccion_actual is None:
-                # Fotos fuera de toda seccion y sin label conocido: no se publican.
+                # Fotos fuera de toda seccion: no se publican.
                 no_publicado.append({"label": label, "tipo": tipo, "valor": f"{len(imgs)} imagen(es)"})
             else:
-                # En el MODULO 1 los labels se repiten dentro de la seccion
-                # ('Evidencia fotografica del antes' x2) y solos no dicen de que
-                # seccion son: ahi se prefija. En los templates viejos son unicos
-                # ('Fotografia de Fosa') y se dejan tal cual, para no cambiarle
-                # el pie de foto a informes que CHG ya aprobo.
-                if labels_file_repetidos.get((f.get("parentId"), nlabel), 0) > 1:
-                    etiqueta = f"{nombre_seccion(f)} — {label}".strip(" —")
-                else:
-                    etiqueta = label
-                existente = next((x for x in fotos if x["etiqueta"] == etiqueta), None)
+                # Las fotos van al final de SU seccion, como en el export de
+                # MaintainX. Ya no hace falta prefijar con el nombre de la
+                # seccion: el titulo esta justo arriba.
+                #
+                # Los labels si se repiten dentro de una seccion ('Evidencia
+                # fotografica del antes' x2 en el MODULO 1): esos se fusionan
+                # en un solo bloque con todas sus imagenes.
+                destino = seccion_actual["fotos"]
+                existente = next((x for x in destino if x["etiqueta"] == label), None)
                 if existente:
                     existente["imagenes"].extend(imgs)
                 else:
-                    fotos.append({"etiqueta": etiqueta, "imagenes": list(imgs)})
+                    destino.append({"etiqueta": label, "imagenes": list(imgs)})
             continue
 
         # UNSUPPORTED y cualquier tipo nuevo: se ignora en silencio.
 
-    # Secciones sin campos ni descripcion (p.ej. el HEADING de portada) no se pintan
-    secciones = [s for s in secciones if s["campos"] or s["descripcion"]]
+    # Secciones sin nada dentro (p.ej. el HEADING de portada) no se pintan
+    secciones = [s for s in secciones if s["campos"] or s["descripcion"] or s["fotos"]]
 
     hechos = sum(len(s["campos"]) for s in secciones)
     meta["campos_completados"] = f"{hechos} / {hechos}"
