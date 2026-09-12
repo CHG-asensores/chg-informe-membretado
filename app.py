@@ -517,12 +517,11 @@ UI = """<!DOCTYPE html>
 
       <div class="edit-group">
         <label for="editEvaluacion">Evaluación final</label>
-        <span class="edit-desc">Sale como etiqueta verde si es "Operativo"; en rojo en cualquier otro caso.</span>
-        <select id="editEvaluacion">
-          <option value="Operativo">Operativo</option>
-          <option value="Operativo con observaciones">Operativo con observaciones</option>
-          <option value="Inoperativo">Inoperativo</option>
-        </select>
+        <span class="edit-desc">Viene tal cual de MaintainX. Sale como etiqueta verde si dice exactamente "Operativo"; en rojo con cualquier otro texto.</span>
+        <input type="text" id="editEvaluacion" list="editEvaluacionOpciones" placeholder="Ej.: Operativo">
+        <datalist id="editEvaluacionOpciones">
+          <option value="Operativo"></option>
+        </datalist>
       </div>
 
       <div class="edit-group">
@@ -729,17 +728,6 @@ UI = """<!DOCTYPE html>
     return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // El select trae opciones fijas; si la OT trae otro valor, se agrega para no perderlo.
-  function setSelectValue(sel, val) {
-    if (!val) return;
-    if (!Array.from(sel.options).some(o => o.value === val)) {
-      const opt = document.createElement('option');
-      opt.value = val; opt.textContent = val;
-      sel.appendChild(opt);
-    }
-    sel.value = val;
-  }
-
   window.openEdit = function(fileId) {
     const item = itemsById[fileId];
     if (!item) return;
@@ -754,8 +742,9 @@ UI = """<!DOCTYPE html>
       <div><b>Activo:</b> ${escapeHtml(m.activo || '—')}</div>
       <div><b>Asignados:</b> ${escapeHtml((m.asignados || []).join(', ') || '—')}</div>
       <div><b>Fecha de salida:</b> ${escapeHtml(m.fecha_hora_salida || '—')}</div>`;
-    editEvaluacion.value = 'Operativo';
-    setSelectValue(editEvaluacion, obs.evaluacion_final || '');
+    // Texto libre: la API de MaintainX entrega solo el valor elegido, no la lista
+    // de opciones del formulario, asi que no hay de donde armar un desplegable.
+    editEvaluacion.value = obs.evaluacion_final || '';
     editRepuesto.value = obs.info_repuesto || '';
     editObs.value      = obs.para_cliente || '';
 
