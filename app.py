@@ -265,8 +265,10 @@ UI = """<!DOCTYPE html>
     .result-meta-card {
       background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px;
       padding: 18px 16px; display: flex; flex-direction: column; gap: 12px;
-      box-shadow: 0 1px 2px rgba(15,23,42,.04); width: 100%; height: 350px;
+      box-shadow: 0 1px 2px rgba(15,23,42,.04); width: 100%; min-height: 350px;
       box-sizing: border-box; overflow: hidden;
+      /* min-height en vez de height: si la fila de acciones envuelve en dos
+         lineas, la tarjeta crece en lugar de aplastar la grilla de datos. */
     }
     .result-meta-card .card-header { display: flex; align-items: center; gap: 12px; flex-shrink: 0; height: 40px; }
     .result-meta-card .card-icon {
@@ -278,7 +280,7 @@ UI = """<!DOCTYPE html>
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
     }
     .result-meta-card .card-grid {
-      display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr);
+      display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, minmax(46px, 1fr));
       gap: 8px; flex: 1; overflow: hidden;
     }
     .result-meta-card .card-grid > div {
@@ -290,9 +292,10 @@ UI = """<!DOCTYPE html>
     .result-meta-card.error { border-color: #fecaca; background: #fef2f2; }
     .result-meta-card.error .item-value { color: #991b1b; }
     .result-meta-card .card-approve { background: #fff; border: 1px solid #eef2f7; border-radius: 10px; padding: 8px 12px; flex-shrink: 0; }
-    .result-meta-card .card-actions { display: flex; gap: 10px; flex-shrink: 0; }
+    /* flex-wrap: con tres botones (vista previa, editar, descargar) la fila ya no cabe en una linea */
+    .result-meta-card .card-actions { display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
     .result-meta-card .card-actions > * {
-      flex: 1; margin-top: 0 !important; height: 38px; padding: 0 10px; font-size: 13px;
+      flex: 1 1 150px; margin-top: 0 !important; height: 38px; padding: 0 10px; font-size: 13px;
       display: flex; align-items: center; justify-content: center;
       gap: 6px; border-radius: 10px; box-sizing: border-box; white-space: nowrap;
     }
@@ -304,6 +307,60 @@ UI = """<!DOCTYPE html>
       transition: border-color .2s, color .2s;
     }
     .btn-preview-item:hover { border-color: #94a3b8; color: #1e293b; }
+
+    /* ── Edición de observaciones (última hoja del informe) ── */
+    .btn-edit-item {
+      display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px;
+      background: #fff; color: #9a5b06; border: 1.5px solid #d79a3a; border-radius: 8px;
+      padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .2s, color .2s;
+    }
+    .btn-edit-item:hover { background: #fbf0dd; color: #7a4704; }
+    .edit-badge {
+      display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+      background: #fbf0dd; color: #9a5b06; border: 1px solid #d79a3a;
+      font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; vertical-align: middle;
+    }
+    /* .preview-modal fija height:94vh mas abajo; la doble clase gana por especificidad */
+    .preview-modal.edit-modal { max-width: 720px; height: auto; max-height: 94vh; }
+    .edit-modal-body { padding: 16px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .edit-ot-header {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;
+      font-size: 13px; color: #334155; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+    }
+    .edit-ot-header b { color: #64748b; font-weight: 600; }
+    .edit-intro { font-size: 12.5px; color: #64748b; margin: 0; }
+    .edit-group { display: flex; flex-direction: column; gap: 5px; }
+    .edit-group label { font-size: 13px; font-weight: 700; color: #1e293b; }
+    .edit-group .edit-desc { font-size: 12px; color: #64748b; font-style: italic; }
+    .edit-group textarea, .edit-group select, .edit-group input[type=text] {
+      width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px;
+      font-family: inherit; font-size: 14px; color: #1e293b; box-sizing: border-box;
+    }
+    .edit-group textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
+    .edit-group textarea:focus, .edit-group select:focus, .edit-group input:focus {
+      outline: none; border-color: #1a1a2e; box-shadow: 0 0 0 3px rgba(26,26,46,.08);
+    }
+    .edit-nopub {
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; color: #78350f;
+    }
+    .edit-nopub b { display: block; margin-bottom: 4px; }
+    .edit-nopub ul { margin: 0; padding-left: 18px; }
+    .edit-nopub li { margin-bottom: 3px; white-space: pre-line; }
+    .edit-actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+    .edit-actions .btn-cancel {
+      background: #fff; color: #334155; border: 1.5px solid #cbd5e1; border-radius: 8px;
+      padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .edit-actions .btn-save {
+      background: #1a1a2e; color: #fff; border: none; border-radius: 8px;
+      padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .edit-actions .btn-save:disabled { opacity: .5; cursor: not-allowed; }
+    .edit-status { font-size: 12.5px; margin-right: auto; min-height: 16px; }
+    .edit-status.ok { color: #166534; }
+    .edit-status.error { color: #991b1b; }
+    @media (max-width: 560px) { .edit-ot-header { grid-template-columns: 1fr; } }
 
     .preview-modal-overlay {
       display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
@@ -447,6 +504,46 @@ UI = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Edición de la última hoja: Observaciones y Recomendaciones -->
+<div class="preview-modal-overlay" id="editOverlay">
+  <div class="preview-modal edit-modal">
+    <div class="preview-modal-header">
+      <span class="fname-title" id="editTitle">Editar observaciones</span>
+      <button class="preview-modal-close" id="editClose" title="Cerrar">✕</button>
+    </div>
+    <div class="edit-modal-body">
+      <div class="edit-ot-header" id="editOtHeader"></div>
+      <p class="edit-intro">Estos campos son el bloque <b>Observaciones y Recomendaciones</b> de la última hoja del informe. El resto del documento se copia tal cual de MaintainX. Al guardar, el informe se vuelve a generar con el membrete y la vista previa se actualiza.</p>
+
+      <div class="edit-group">
+        <label for="editEvaluacion">Evaluación final</label>
+        <span class="edit-desc">Viene tal cual de MaintainX. Sale como etiqueta verde si dice exactamente "Operativo"; en rojo con cualquier otro texto.</span>
+        <input type="text" id="editEvaluacion" autocomplete="off">
+      </div>
+
+      <div class="edit-group">
+        <label for="editRepuesto">Información de repuesto (medidas, datos técnicos)</label>
+        <span class="edit-desc">Si va vacío, la sección "Detalles del repuesto" no aparece en el informe (las fotos de repuesto sí se conservan).</span>
+        <textarea id="editRepuesto" rows="3"></textarea>
+      </div>
+
+      <div class="edit-group">
+        <label for="editObs">Observaciones y Recomendaciones para cliente</label>
+        <span class="edit-desc">Una observación por línea: el informe las muestra como lista. Si lo dejas vacío y el equipo quedó Operativo, sale "Sin observaciones.".</span>
+        <textarea id="editObs" rows="6"></textarea>
+      </div>
+
+      <div class="edit-nopub" id="editNoPub" style="display:none;"></div>
+
+      <div class="edit-actions">
+        <span class="edit-status" id="editStatus"></span>
+        <button class="btn-cancel" id="editCancel">Cancelar</button>
+        <button class="btn-save" id="editSave">💾 Guardar y regenerar informe</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   const dropZone    = document.getElementById('dropZone');
   const fileInput   = document.getElementById('fileInput');
@@ -587,9 +684,128 @@ UI = """<!DOCTYPE html>
     const dl = `/download/${item.file_id}`;
     const safeName = (item.filename || '').replace(/'/g, "\\'");
     let html = `<button class="btn-preview-item" onclick="openPreview('${item.file_id}', '${safeName}')">👁️ Ver vista previa</button>`;
+    html += `<button class="btn-edit-item" onclick="openEdit('${item.file_id}')">✏️ Editar observaciones</button>`;
     if (showDownload) html += `<a class="btn-download-item" href="${dl}" download="${item.filename}">⬇️ Descargar este PDF</a>`;
     return html;
   }
+
+  // ── Ficha de cada informe (una función para lote y para archivo único) ──
+  // itemsById guarda el item tal como lo devolvió /generate (meta, observaciones,
+  // no_publicado) para poder abrir el editor y repintar la ficha tras guardar.
+  let itemsById  = {};
+  let editadoIds = new Set();
+
+  function cardHtml(item, showDownload) {
+    const m = item.meta || {};
+    const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
+    const badge = editadoIds.has(item.file_id) ? '<span class="edit-badge">✏️ Editado</span>' : '';
+    return `<div class="result-meta-card">
+      <div class="card-header"><div class="card-icon">🏢</div><div class="card-title" title="${titulo}">${titulo}${badge}</div></div>
+      <div class="card-grid">${metaGridHtml(m)}</div>
+      ${approveCheckboxHtml(item.file_id)}
+      <div class="card-actions">${itemPreviewHtml(item, showDownload)}</div>
+    </div>`;
+  }
+
+  // ── Editor de observaciones ──
+  const editOverlay   = document.getElementById('editOverlay');
+  const editTitle     = document.getElementById('editTitle');
+  const editOtHeader  = document.getElementById('editOtHeader');
+  const editEvaluacion = document.getElementById('editEvaluacion');
+  const editRepuesto  = document.getElementById('editRepuesto');
+  const editObs       = document.getElementById('editObs');
+  const editNoPub     = document.getElementById('editNoPub');
+  const editStatus    = document.getElementById('editStatus');
+  const editSave      = document.getElementById('editSave');
+  const editCancel    = document.getElementById('editCancel');
+  const editClose     = document.getElementById('editClose');
+  let editingFileId = null;
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  window.openEdit = function(fileId) {
+    const item = itemsById[fileId];
+    if (!item) return;
+    editingFileId = fileId;
+    const m   = item.meta || {};
+    const obs = item.observaciones || {};
+    editTitle.textContent = `Editar observaciones — ${item.filename || ''}`;
+    editOtHeader.innerHTML = `
+      <div><b>N° OT:</b> #${escapeHtml(m.numero_orden || '—')}</div>
+      <div><b>Estado:</b> ${escapeHtml(m.estado || '—')}</div>
+      <div><b>Ubicación:</b> ${escapeHtml(m.ubicacion || '—')}</div>
+      <div><b>Activo:</b> ${escapeHtml(m.activo || '—')}</div>
+      <div><b>Asignados:</b> ${escapeHtml((m.asignados || []).join(', ') || '—')}</div>
+      <div><b>Fecha de salida:</b> ${escapeHtml(m.fecha_hora_salida || '—')}</div>`;
+    // Texto libre: la API de MaintainX entrega solo el valor elegido, no la lista
+    // de opciones del formulario, asi que no hay de donde armar un desplegable.
+    editEvaluacion.value = obs.evaluacion_final || '';
+    editRepuesto.value = obs.info_repuesto || '';
+    editObs.value      = obs.para_cliente || '';
+
+    // Campos de texto que la OT trae pero que no se publican en el informe.
+    // Hoy la operadora no los ve; aquí puede copiarlos a observaciones si corresponde.
+    const np = (item.no_publicado || []).filter(x => x && x.tipo === 'TEXT' && x.valor);
+    if (np.length) {
+      editNoPub.style.display = '';
+      editNoPub.innerHTML = `<b>Campos de la OT que no salen en el informe (solo referencia):</b><ul>` +
+        np.map(x => `<li><i>${escapeHtml(x.label)}:</i> ${escapeHtml(x.valor)}</li>`).join('') + `</ul>`;
+    } else {
+      editNoPub.style.display = 'none';
+      editNoPub.innerHTML = '';
+    }
+    editStatus.textContent = ''; editStatus.className = 'edit-status';
+    editSave.disabled = false;
+    editOverlay.classList.add('show');
+  };
+
+  function closeEdit() {
+    if (editSave.disabled) return; // no cerrar mientras regenera
+    editOverlay.classList.remove('show');
+    editingFileId = null;
+  }
+  editClose.addEventListener('click', closeEdit);
+  editCancel.addEventListener('click', closeEdit);
+  editOverlay.addEventListener('click', (e) => { if (e.target === editOverlay) closeEdit(); });
+
+  editSave.addEventListener('click', async () => {
+    if (!editingFileId) return;
+    const fid = editingFileId;
+    editSave.disabled = true;
+    editStatus.className = 'edit-status';
+    editStatus.textContent = '⏳ Regenerando informe con el membrete…';
+    try {
+      const resp = await fetch(`/informe/${fid}/observaciones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluacion_final: editEvaluacion.value,
+          info_repuesto:    editRepuesto.value,
+          para_cliente:     editObs.value,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || `El servidor respondió ${resp.status}`);
+      itemsById[fid].observaciones = data.observaciones || itemsById[fid].observaciones;
+      editadoIds.add(fid);
+      editStatus.className = 'edit-status ok';
+      editStatus.textContent = '✅ Informe regenerado.';
+      editSave.disabled = false;
+      editOverlay.classList.remove('show');
+      editingFileId = null;
+      renderResultCards();
+      // Si la vista previa estaba abierta sobre este informe, recargarla.
+      if (previewOverlay.classList.contains('show') && previewFrame.dataset.fileId === fid) {
+        previewFrame.src = `/download/${fid}?inline=1&v=${Date.now()}`;
+      }
+    } catch (err) {
+      editStatus.className = 'edit-status error';
+      editStatus.textContent = '❌ No se pudo regenerar: ' + err.message;
+      editSave.disabled = false;
+    }
+  });
 
   const previewOverlay = document.getElementById('previewOverlay');
   const previewFrame   = document.getElementById('previewFrame');
@@ -598,7 +814,9 @@ UI = """<!DOCTYPE html>
 
   window.openPreview = function(fileId, filename) {
     previewTitle.textContent = filename || 'Vista previa';
-    previewFrame.src = `/download/${fileId}?inline=1`;
+    previewFrame.dataset.fileId = fileId;
+    // ?v= evita que el navegador muestre el PDF cacheado tras una edición.
+    previewFrame.src = `/download/${fileId}?inline=1&v=${Date.now()}`;
     previewOverlay.classList.add('show');
   };
   previewClose.addEventListener('click', () => { previewOverlay.classList.remove('show'); previewFrame.src = ''; });
@@ -610,10 +828,37 @@ UI = """<!DOCTYPE html>
     driveStatus.textContent = ''; driveStatus.className = 'drive-status';
   }
 
+  // Último resultado de /generate. renderResultCards() repinta las fichas a partir
+  // de itemsById, así que una edición no obliga a volver a procesar nada.
+  let lastResult = null;
+
+  function renderResultCards() {
+    const data = lastResult;
+    if (!data || !data.ok) return;
+    if (data.multi) {
+      carouselSlides = (data.items || []).map(item => cardHtml(itemsById[item.file_id] || item, true));
+      if (data.errors && data.errors.length) {
+        carouselSlides = carouselSlides.concat(data.errors.map(e => `<div class="result-meta-card error"><div class="card-title">⚠️ ${e.archivo}</div><div class="item-value">${e.error}</div></div>`));
+      }
+      renderCarousel();
+    } else {
+      resultMeta.innerHTML = cardHtml(itemsById[data.file_id] || data, false);
+      const approveCb = document.getElementById('approveCheckbox');
+      if (approveCb) {
+        approveCb.addEventListener('change', () => {
+          const fid = approveCb.dataset.fileId;
+          if (approveCb.checked) approvedIds.add(fid); else approvedIds.delete(fid);
+          updateDriveButtonState();
+        });
+      }
+    }
+  }
+
   function showResult(data) {
     loadingOverlay.classList.remove('show');
     resultCard.classList.add('show');
     carouselSlides = []; carouselIndex = 0; approvedIds = new Set();
+    itemsById = {}; editadoIds = new Set(); lastResult = data;
     btnDrive.style.display = ''; updateDriveButtonState();
 
     if (data.ok) {
@@ -641,38 +886,11 @@ UI = """<!DOCTYPE html>
     btnDownload.innerHTML = data.multi ? '⬇️ Descargar .zip con informes membretados' : '⬇️ Descargar PDF membretado';
 
     if (data.multi) {
-      carouselSlides = (data.items || []).map(item => {
-        const m = item.meta || {};
-        const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || item.filename}` : item.filename;
-        return `<div class="result-meta-card">
-          <div class="card-header"><div class="card-icon">🏢</div><div class="card-title" title="${titulo}">${titulo}</div></div>
-          <div class="card-grid">${metaGridHtml(m)}</div>
-          ${approveCheckboxHtml(item.file_id)}
-          <div class="card-actions">${itemPreviewHtml(item, true)}</div>
-        </div>`;
-      });
-      if (data.errors && data.errors.length) {
-        carouselSlides = carouselSlides.concat(data.errors.map(e => `<div class="result-meta-card error"><div class="card-title">⚠️ ${e.archivo}</div><div class="item-value">${e.error}</div></div>`));
-      }
-      renderCarousel();
-    } else {
-      const m = data.meta || {};
-      const titulo = m.numero_orden ? `#${m.numero_orden} — ${m.ubicacion || data.filename}` : data.filename;
-      resultMeta.innerHTML = `<div class="result-meta-card">
-        <div class="card-header"><div class="card-icon">🏢</div><div class="card-title" title="${titulo}">${titulo}</div></div>
-        <div class="card-grid">${metaGridHtml(m)}</div>
-        ${approveCheckboxHtml(data.file_id)}
-        <div class="card-actions">${itemPreviewHtml(data, false)}</div>
-      </div>`;
-      const approveCb = document.getElementById('approveCheckbox');
-      if (approveCb) {
-        approveCb.addEventListener('change', () => {
-          const fid = approveCb.dataset.fileId;
-          if (approveCb.checked) approvedIds.add(fid); else approvedIds.delete(fid);
-          updateDriveButtonState();
-        });
-      }
+      (data.items || []).forEach(item => { if (item.file_id) itemsById[item.file_id] = item; });
+    } else if (data.file_id) {
+      itemsById[data.file_id] = data;
     }
+    renderResultCards();
   }
 
   ['dragenter','dragover'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('over'); }));
@@ -809,14 +1027,27 @@ def static_logo():
 def index():
     return render_template_string(UI)
 
-# _pdf_store guarda: (filename, pdf_bytes, drive_name, meta)
+# _pdf_store: file_id -> dict con
+#   filename   nombre de descarga
+#   pdf        bytes del PDF membretado (se reemplaza al editar)
+#   drive_name nombre con el que se sube a Drive
+#   meta       resumen para la ficha y el webhook de Drive
+#   data       dict completo de la OT (secciones, fotos en base64, observaciones).
+#              Se retiene para poder regenerar el PDF tras una edicion.
+#   zip_of     (solo entradas .zip) lista de file_ids que contiene. El zip se arma
+#              al descargar, asi siempre lleva la ultima version de cada informe.
+# Vive en memoria del unico worker de gunicorn (ver Dockerfile).
 _pdf_store: dict = {}
 
-def process_one_pdf(pdf_bytes: bytes):
+def _leer_ot(pdf_bytes: bytes) -> dict:
     try:
-        data = parse_ot_desde_pdf(pdf_bytes)
+        return parse_ot_desde_pdf(pdf_bytes)
     except Exception as exc:
         raise RuntimeError(f"Error al leer la OT desde MaintainX: {exc}")
+
+
+def _render_pdf(data: dict) -> bytes:
+    """HTML Jinja2 -> PDF (Playwright) -> membrete. Se usa al generar y al editar."""
     try:
         html_b64 = render_html(data, str(TEMPLATE_PATH), str(MEMBRETE_PATH))
         html_bytes = base64.b64decode(html_b64)
@@ -827,14 +1058,64 @@ def process_one_pdf(pdf_bytes: bytes):
     except Exception as exc:
         raise RuntimeError(f"Error al generar PDF con Playwright: {exc}")
     try:
-        pdf_out = apply_letterhead(pdf_raw, str(MEMBRETE_PATH))
+        return apply_letterhead(pdf_raw, str(MEMBRETE_PATH))
     except Exception as exc:
         raise RuntimeError(f"Error al aplicar membrete: {exc}")
+
+
+def process_one_pdf(pdf_bytes: bytes):
+    data     = _leer_ot(pdf_bytes)
+    pdf_out  = _render_pdf(data)
     meta     = data.get("meta", {})
     # Observaciones internas: van al webhook de Drive, NUNCA al PDF del cliente
     meta["para_chg"] = data.get("observaciones", {}).get("para_chg", "")
     filename = build_output_filename(meta)
-    return filename, pdf_out, meta
+    return filename, pdf_out, meta, data
+
+
+def _observaciones_editables(data: dict) -> dict:
+    """Los campos del bloque 'Observaciones y Recomendaciones' que la operadora puede editar."""
+    obs = data.get("observaciones", {}) or {}
+    dr  = obs.get("detalles_repuesto", {}) or {}
+    return {
+        "evaluacion_final": obs.get("evaluacion_final", "") or "",
+        "info_repuesto":    dr.get("info_tecnica", "") or "",
+        "para_cliente":     obs.get("para_cliente", "") or "",
+    }
+
+
+def _guardar(file_id: str, filename: str, pdf_out: bytes, meta: dict, data: dict):
+    _pdf_store[file_id] = {
+        "filename":   filename,
+        "pdf":        pdf_out,
+        "drive_name": filename,
+        "meta":       meta,
+        "data":       data,
+    }
+
+
+def _item_response(file_id: str, entry: dict) -> dict:
+    """Lo que la ficha necesita de cada informe (incluye lo editable y lo no publicado)."""
+    data = entry.get("data") or {}
+    return {
+        "file_id":       file_id,
+        "filename":      entry["filename"],
+        "meta":          entry["meta"],
+        "observaciones": _observaciones_editables(data),
+        "no_publicado":  data.get("no_publicado", []) or [],
+        "download_url":  f"/download/{file_id}",
+    }
+
+
+def _armar_zip(file_ids: list) -> bytes:
+    import zipfile
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fid in file_ids:
+            entry = _pdf_store.get(fid)
+            if entry and entry.get("pdf"):
+                zf.writestr(entry["filename"], entry["pdf"])
+    return zip_buf.getvalue()
 
 @app.route("/generate", methods=["POST"])
 @login_required
@@ -843,7 +1124,7 @@ def generate():
     if not files:
         return jsonify({"error": "No se recibió ningún archivo PDF."}), 400
 
-    import hashlib, time, zipfile
+    import hashlib, time
 
     if len(files) == 1:
         original_name = files[0].filename or "archivo.pdf"
@@ -851,23 +1132,18 @@ def generate():
         if not pdf_bytes:
             return jsonify({"error": "El archivo está vacío."}), 400
         try:
-            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+            filename, pdf_out, meta, data = process_one_pdf(pdf_bytes)
         except RuntimeError as exc:
             return jsonify({"error": str(exc)}), 500
         file_id = hashlib.md5(f"{filename}{time.time()}".encode()).hexdigest()[:12]
-        _pdf_store[file_id] = (filename, pdf_out, filename, meta)
-        return jsonify({
-            "ok":           True,
-            "multi":        False,
-            "meta":         meta,
-            "filename":     filename,
-            "file_id":      file_id,
-            "download_url": f"/download/{file_id}",
-        })
+        _guardar(file_id, filename, pdf_out, meta, data)
+        resp = _item_response(file_id, _pdf_store[file_id])
+        resp.update({"ok": True, "multi": False})
+        return jsonify(resp)
 
-    results = []
     items   = []
     errors  = []
+    nombres = set()
 
     for f in files:
         original_name = f.filename or "archivo.pdf"
@@ -876,42 +1152,89 @@ def generate():
             errors.append({"archivo": original_name, "error": "Archivo vacío"})
             continue
         try:
-            filename, pdf_out, meta = process_one_pdf(pdf_bytes)
+            filename, pdf_out, meta, data = process_one_pdf(pdf_bytes)
             base, ext = os.path.splitext(filename)
             candidate = filename
             n = 1
-            existentes = {r[0] for r in results}
-            while candidate in existentes:
+            while candidate in nombres:
                 candidate = f"{base}_{n}{ext}"
                 n += 1
-            results.append((candidate, pdf_out))
+            nombres.add(candidate)
             individual_id = hashlib.md5(f"{candidate}{time.time()}{len(items)}".encode()).hexdigest()[:12]
-            _pdf_store[individual_id] = (candidate, pdf_out, candidate, meta)
-            items.append({"filename": candidate, "meta": meta, "file_id": individual_id})
+            _guardar(individual_id, candidate, pdf_out, meta, data)
+            items.append(_item_response(individual_id, _pdf_store[individual_id]))
         except RuntimeError as exc:
             errors.append({"archivo": original_name, "error": str(exc)})
 
-    if not results:
+    if not items:
         return jsonify({"ok": False, "error": "No se pudo procesar ningún archivo.", "errors": errors}), 500
 
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fname, pdf_bytes_ in results:
-            zf.writestr(fname, pdf_bytes_)
-    zip_buf.seek(0)
-
+    # El zip no se materializa aqui: se arma en /download con los PDFs vigentes,
+    # para que una edicion posterior no deje un zip viejo.
     zip_filename = f"informes-membretados-{int(time.time())}.zip"
     file_id = hashlib.md5(f"{zip_filename}{time.time()}".encode()).hexdigest()[:12]
-    _pdf_store[file_id] = (zip_filename, zip_buf.getvalue(), zip_filename, {})
+    _pdf_store[file_id] = {
+        "filename":   zip_filename,
+        "pdf":        None,
+        "drive_name": zip_filename,
+        "meta":       {},
+        "data":       None,
+        "zip_of":     [it["file_id"] for it in items],
+    }
 
     return jsonify({
         "ok":           True,
         "multi":        True,
-        "count":        len(results),
+        "count":        len(items),
         "items":        items,
         "errors":       errors,
         "filename":     zip_filename,
         "download_url": f"/download/{file_id}",
+    })
+
+@app.route("/informe/<file_id>/observaciones", methods=["POST"])
+@login_required
+def editar_observaciones(file_id):
+    """
+    Capa editable: recibe los campos del bloque 'Observaciones y Recomendaciones'
+    ya revisados, los mezcla en el data de la OT y regenera el PDF bajo el MISMO
+    file_id. Vista previa, descarga, zip y subida a Drive siguen apuntando ahi.
+    El resto del informe (checklist, fotos, firma, cabecera) no se toca.
+    """
+    entry = _pdf_store.get(file_id)
+    if not entry or not entry.get("data"):
+        return jsonify({"ok": False, "error": "Informe no encontrado o expirado. Vuelve a generarlo."}), 404
+
+    payload = request.get_json(silent=True) or {}
+
+    def _texto(clave):
+        v = payload.get(clave, "")
+        return str(v if v is not None else "").replace("\r\n", "\n").strip()
+
+    data = entry["data"]
+    obs  = data.setdefault("observaciones", {})
+    dr   = obs.setdefault("detalles_repuesto", {"info_tecnica": "", "fotos": []})
+
+    if "evaluacion_final" in payload:
+        obs["evaluacion_final"] = _texto("evaluacion_final")
+    if "info_repuesto" in payload:
+        dr["info_tecnica"] = _texto("info_repuesto")
+    if "para_cliente" in payload:
+        # Una observacion por linea; las vacias se descartan. El template las
+        # pinta como lista si hay mas de una.
+        lineas = [l.strip() for l in _texto("para_cliente").split("\n")]
+        obs["para_cliente"] = "\n".join(l for l in lineas if l)
+
+    try:
+        entry["pdf"] = _render_pdf(data)
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    entry["meta"]["editado"] = True
+    return jsonify({
+        "ok":            True,
+        "file_id":       file_id,
+        "observaciones": _observaciones_editables(data),
     })
 
 @app.route("/download/<file_id>")
@@ -919,7 +1242,9 @@ def generate():
 def download(file_id):
     if file_id not in _pdf_store:
         return "Archivo no encontrado o expirado.", 404
-    filename, file_bytes, _, _meta = _pdf_store[file_id]
+    entry = _pdf_store[file_id]
+    filename = entry["filename"]
+    file_bytes = _armar_zip(entry["zip_of"]) if entry.get("zip_of") else entry["pdf"]
     mimetype = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
     inline = request.args.get("inline", "").strip() in ("1", "true", "yes")
     resp = send_file(
@@ -950,11 +1275,14 @@ def upload_to_drive():
 
     results = []
     for fid in file_ids:
-        if fid not in _pdf_store:
+        entry = _pdf_store.get(fid)
+        if not entry or not entry.get("pdf"):
             results.append({"file_id": fid, "ok": False, "error": "Archivo no encontrado o expirado."})
             continue
 
-        filename, file_bytes, drive_name, meta = _pdf_store[fid]
+        file_bytes = entry["pdf"]        # ya incluye la ultima edicion, si la hubo
+        drive_name = entry["drive_name"]
+        meta       = entry["meta"]
 
         # Extraer datos del meta para enviar al webhook
         fecha_vencimiento = meta.get("fecha_vencimiento", "")
