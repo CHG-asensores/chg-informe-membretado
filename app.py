@@ -518,10 +518,7 @@ UI = """<!DOCTYPE html>
       <div class="edit-group">
         <label for="editEvaluacion">Evaluación final</label>
         <span class="edit-desc">Viene tal cual de MaintainX. Sale como etiqueta verde si dice exactamente "Operativo"; en rojo con cualquier otro texto.</span>
-        <input type="text" id="editEvaluacion" list="editEvaluacionOpciones" placeholder="Ej.: Operativo">
-        <datalist id="editEvaluacionOpciones">
-          <option value="Operativo"></option>
-        </datalist>
+        <input type="text" id="editEvaluacion" autocomplete="off">
       </div>
 
       <div class="edit-group">
